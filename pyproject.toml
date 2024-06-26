@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ASTreeAnalyzer"
+version = "0.1.0"
+description = "A project for analyzing occurrences of AST subtrees, counting them, and performing calculations."
+authors = [
+    { name="Atoms of Confusion team", email="atomsofconfusion@googlegroups.com" }
+]
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "clang",
+    "click",
+]
+
+[project.scripts]
+ast = "tools.cli:cli"
+
+
+[tool.setuptools.packages.find]
+where = ["astree_analyzer"]
+
+
+[project.optional-dependencies]
+test = [
+    "pytest",
+]
