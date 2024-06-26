@@ -18,14 +18,19 @@ This project provides a tool for analyzing C/C++ code by extracting, serializing
 
 2. **Set up the Python environment**:
 
+    ```sh
     python3 -m venv .venv
+    ```sh
     source .venv/bin/activate
+    ```sh
     pip install clang
 
 3. **Set up Clang library path**:
 
     Here is an example for macOS:
-    `library_file = '/opt/homebrew/opt/llvm/lib/libclang.dylib'`
+    ```sh
+    library_file = '/opt/homebrew/opt/llvm/lib/libclang.dylib'
+
 ## Usage
 
 1. **Assign your target:**
@@ -35,7 +40,8 @@ This project provides a tool for analyzing C/C++ code by extracting, serializing
 
 2. **Run the script:**    
 
-    ```python parse.py```
+    ```sh
+    python parse.py
 
 3. **Output:**
 
