@@ -4,7 +4,7 @@ This project provides a tool for analyzing C/C++ code by extracting, serializing
 
 ## Requirements
 
-- Python 3.7+
+- Python 3.8+
 - Clang 12+
 - LLVM library
 

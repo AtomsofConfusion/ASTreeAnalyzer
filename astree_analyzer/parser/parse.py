@@ -1,10 +1,19 @@
+import platform
+import csv
 import clang.cindex
 import hashlib
 from collections import Counter
-import csv
+from pathlib import Path
+from . import PROJECT_ROOT
 
 # Change path as necessary. This is for Mac.
-library_file = '/opt/homebrew/opt/llvm/lib/libclang.dylib'
+
+if platform.system() ==  "Windows":
+    library_file = str(PROJECT_ROOT / "libs/windows/libclang.dll")
+else:
+    library_file = '/opt/homebrew/opt/llvm/lib/libclang.dylib'
+
+
 clang.cindex.Config.set_library_file(library_file)
 
 def serialize_node(node, anon_map=None):
@@ -197,29 +206,36 @@ def tree_to_expression(node):
     else:
         return f"{node_rep}(" + ", ".join(tree_to_expression(child) for child in children) + ")"
 
-# Main execution
-target_file = 'add.c'
-ast = parse_to_ast(target_file)
-subtrees = extract_subtrees(ast)
 
-# Create a mapping between serialized and deserialized subtrees
-subtree_map = {subtree: print_tree(deserialize_subtree(subtree)) for subtree in subtrees}
-subtree_counter = count_subtrees(subtrees)
 
-# Write to CSV
-with open('subtrees.csv', 'w', newline='') as csvfile:
-    fieldnames = ['Hash', 'Count', 'Human Readable Expression', 'Serialized Subtree', 'Deserialized Tree']
-    writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+def parse(input_path: str, output_dir: str):
+    """
+    TODO write docstring
+    """
 
-    writer.writeheader()
-    for subtree, count in subtree_counter.items():
-        hash_val = hash_subtree(subtree)
-        deserialized_tree = subtree_map[subtree]
-        human_readable_expression = tree_to_expression(deserialize_subtree(subtree))
-        writer.writerow({
-            'Hash': hash_val,
-            'Count': count,
-            'Human Readable Expression': human_readable_expression,
-            'Serialized Subtree': subtree,
-            'Deserialized Tree': deserialized_tree
-        })
+    ast = parse_to_ast(input_path)
+    subtrees = extract_subtrees(ast)
+
+    # Create a mapping between serialized and deserialized subtrees
+    subtree_map = {subtree: print_tree(deserialize_subtree(subtree)) for subtree in subtrees}
+    subtree_counter = count_subtrees(subtrees)
+
+    output_path = str(Path(output_dir, "subtrees.csv"))
+    # Write to CSV
+    with open(output_path, 'w', newline='') as csvfile:
+        fieldnames = ['Hash', 'Count', 'Human Readable Expression', 'Serialized Subtree', 'Deserialized Tree']
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+
+        writer.writeheader()
+        for subtree, count in subtree_counter.items():
+            hash_val = hash_subtree(subtree)
+            deserialized_tree = subtree_map[subtree]
+            human_readable_expression = tree_to_expression(deserialize_subtree(subtree))
+            writer.writerow({
+                'Hash': hash_val,
+                'Count': count,
+                'Human Readable Expression': human_readable_expression,
+                'Serialized Subtree': subtree,
+                'Deserialized Tree': deserialized_tree
+            })
+    print(f"Output written to {output_path}")
