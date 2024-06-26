@@ -59,7 +59,7 @@ This project provides a tool for analyzing C/C++ code by extracting, serializing
 
    `parse.py`
    This script contains the following main functions:
-   - serialize_node(node, anon_map=None): Serializes an AST node, anonymizing variable names.
+   - serialize_node(node, anon_map=None): Serializes an AST node, anonymizing variable names. Note: each subtree is re-anonymized.
    - extract_subtrees(node, subtrees=None): Extracts all subtrees starting from a given node.
    - hash_subtree(subtree): Returns the SHA-256 hash of a serialized subtree.
    - count_subtrees(subtrees): Counts the occurrences of each subtree.
