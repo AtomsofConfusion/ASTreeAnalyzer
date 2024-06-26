@@ -1,0 +1,271 @@
+Hash,Count,Human Readable Expression,Serialized Subtree,Deserialized Tree
+2f2fd62ed9af1c1d462bf4919436b7343671ac8ad98a6523fcca672228e9889d,1,CursorKind.TRANSLATION_UNIT(var_0_int ()(var_1_int(0) var_2_char('*') for (var_3_int(0); var_3_int < 0; var_3_int++post) { if (var_3_int % 0 % 0) { var_2_char++post } else {  } } return CursorKind.PAREN_EXPR(var_1_int + var_2_char) + ;))),"CursorKind.TRANSLATION_UNIT(var_0_int ()(CursorKind.COMPOUND_STMT(CursorKind.DECL_STMT(var_1_int(0)),CursorKind.DECL_STMT(var_2_char(CursorKind.UNEXPOSED_EXPR('*'))),CursorKind.FOR_STMT(CursorKind.DECL_STMT(var_3_int(0)),CursorKind.BINARY_OPERATOR_<(CursorKind.UNEXPOSED_EXPR(var_3_int),0),CursorKind.UNARY_OPERATOR_++_post(var_3_int),CursorKind.COMPOUND_STMT(CursorKind.IF_STMT(CursorKind.BINARY_OPERATOR_%(CursorKind.BINARY_OPERATOR_%(CursorKind.UNEXPOSED_EXPR(var_3_int),0),0),CursorKind.COMPOUND_STMT(CursorKind.UNARY_OPERATOR_++_post(var_2_char))))),CursorKind.RETURN_STMT(CursorKind.BINARY_OPERATOR_+(CursorKind.PAREN_EXPR(CursorKind.BINARY_OPERATOR_+(CursorKind.UNEXPOSED_EXPR(var_1_int),CursorKind.UNEXPOSED_EXPR(CursorKind.UNEXPOSED_EXPR(var_2_char)))),0)))))","CursorKind.TRANSLATION_UNIT
+  var_0_int 
+    )
+      CursorKind.COMPOUND_STMT
+        CursorKind.DECL_STMT
+          var_1_int
+            0
+        CursorKind.DECL_STMT
+          var_2_char
+            CursorKind.UNEXPOSED_EXPR
+              '*'
+        CursorKind.FOR_STMT
+          CursorKind.DECL_STMT
+            var_3_int
+              0
+          CursorKind.BINARY_OPERATOR_<
+            CursorKind.UNEXPOSED_EXPR
+              var_3_int
+            0
+          CursorKind.UNARY_OPERATOR_++_post
+            var_3_int
+          CursorKind.COMPOUND_STMT
+            CursorKind.IF_STMT
+              CursorKind.BINARY_OPERATOR_%
+                CursorKind.BINARY_OPERATOR_%
+                  CursorKind.UNEXPOSED_EXPR
+                    var_3_int
+                  0
+                0
+              CursorKind.COMPOUND_STMT
+                CursorKind.UNARY_OPERATOR_++_post
+                  var_2_char
+        CursorKind.RETURN_STMT
+          CursorKind.BINARY_OPERATOR_+
+            CursorKind.PAREN_EXPR
+              CursorKind.BINARY_OPERATOR_+
+                CursorKind.UNEXPOSED_EXPR
+                  var_1_int
+                CursorKind.UNEXPOSED_EXPR
+                  CursorKind.UNEXPOSED_EXPR
+                    var_2_char
+            
+"
+2429485adcac714ddf73f1382b2b014625b187269839b9bebb7bc058504c12d5,1,var_0_int ()(var_1_int(0) var_2_char('*') for (var_3_int(0); var_3_int < 0; var_3_int++post) { if (var_3_int % 0 % 0) { var_2_char++post } else {  } } return CursorKind.PAREN_EXPR(var_1_int + var_2_char) + ;)),"var_0_int ()(CursorKind.COMPOUND_STMT(CursorKind.DECL_STMT(var_1_int(0)),CursorKind.DECL_STMT(var_2_char(CursorKind.UNEXPOSED_EXPR('*'))),CursorKind.FOR_STMT(CursorKind.DECL_STMT(var_3_int(0)),CursorKind.BINARY_OPERATOR_<(CursorKind.UNEXPOSED_EXPR(var_3_int),0),CursorKind.UNARY_OPERATOR_++_post(var_3_int),CursorKind.COMPOUND_STMT(CursorKind.IF_STMT(CursorKind.BINARY_OPERATOR_%(CursorKind.BINARY_OPERATOR_%(CursorKind.UNEXPOSED_EXPR(var_3_int),0),0),CursorKind.COMPOUND_STMT(CursorKind.UNARY_OPERATOR_++_post(var_2_char))))),CursorKind.RETURN_STMT(CursorKind.BINARY_OPERATOR_+(CursorKind.PAREN_EXPR(CursorKind.BINARY_OPERATOR_+(CursorKind.UNEXPOSED_EXPR(var_1_int),CursorKind.UNEXPOSED_EXPR(CursorKind.UNEXPOSED_EXPR(var_2_char)))),0))))","var_0_int 
+  )
+    CursorKind.COMPOUND_STMT
+      CursorKind.DECL_STMT
+        var_1_int
+          0
+      CursorKind.DECL_STMT
+        var_2_char
+          CursorKind.UNEXPOSED_EXPR
+            '*'
+      CursorKind.FOR_STMT
+        CursorKind.DECL_STMT
+          var_3_int
+            0
+        CursorKind.BINARY_OPERATOR_<
+          CursorKind.UNEXPOSED_EXPR
+            var_3_int
+          0
+        CursorKind.UNARY_OPERATOR_++_post
+          var_3_int
+        CursorKind.COMPOUND_STMT
+          CursorKind.IF_STMT
+            CursorKind.BINARY_OPERATOR_%
+              CursorKind.BINARY_OPERATOR_%
+                CursorKind.UNEXPOSED_EXPR
+                  var_3_int
+                0
+              0
+            CursorKind.COMPOUND_STMT
+              CursorKind.UNARY_OPERATOR_++_post
+                var_2_char
+      CursorKind.RETURN_STMT
+        CursorKind.BINARY_OPERATOR_+
+          CursorKind.PAREN_EXPR
+            CursorKind.BINARY_OPERATOR_+
+              CursorKind.UNEXPOSED_EXPR
+                var_1_int
+              CursorKind.UNEXPOSED_EXPR
+                CursorKind.UNEXPOSED_EXPR
+                  var_2_char
+          
+"
+861e459345e0a706cf9473562b9cc9782ae473f1a349e67bb997c45ffd4c3f7a,1,var_0_int(0) var_1_char('*') for (var_2_int(0); var_2_int < 0; var_2_int++post) { if (var_2_int % 0 % 0) { var_1_char++post } else {  } } return CursorKind.PAREN_EXPR(var_0_int + var_1_char) + 0;,"CursorKind.COMPOUND_STMT(CursorKind.DECL_STMT(var_0_int(0)),CursorKind.DECL_STMT(var_1_char(CursorKind.UNEXPOSED_EXPR('*'))),CursorKind.FOR_STMT(CursorKind.DECL_STMT(var_2_int(0)),CursorKind.BINARY_OPERATOR_<(CursorKind.UNEXPOSED_EXPR(var_2_int),0),CursorKind.UNARY_OPERATOR_++_post(var_2_int),CursorKind.COMPOUND_STMT(CursorKind.IF_STMT(CursorKind.BINARY_OPERATOR_%(CursorKind.BINARY_OPERATOR_%(CursorKind.UNEXPOSED_EXPR(var_2_int),0),0),CursorKind.COMPOUND_STMT(CursorKind.UNARY_OPERATOR_++_post(var_1_char))))),CursorKind.RETURN_STMT(CursorKind.BINARY_OPERATOR_+(CursorKind.PAREN_EXPR(CursorKind.BINARY_OPERATOR_+(CursorKind.UNEXPOSED_EXPR(var_0_int),CursorKind.UNEXPOSED_EXPR(CursorKind.UNEXPOSED_EXPR(var_1_char)))),0)))","CursorKind.COMPOUND_STMT
+  CursorKind.DECL_STMT
+    var_0_int
+      0
+  CursorKind.DECL_STMT
+    var_1_char
+      CursorKind.UNEXPOSED_EXPR
+        '*'
+  CursorKind.FOR_STMT
+    CursorKind.DECL_STMT
+      var_2_int
+        0
+    CursorKind.BINARY_OPERATOR_<
+      CursorKind.UNEXPOSED_EXPR
+        var_2_int
+      0
+    CursorKind.UNARY_OPERATOR_++_post
+      var_2_int
+    CursorKind.COMPOUND_STMT
+      CursorKind.IF_STMT
+        CursorKind.BINARY_OPERATOR_%
+          CursorKind.BINARY_OPERATOR_%
+            CursorKind.UNEXPOSED_EXPR
+              var_2_int
+            0
+          0
+        CursorKind.COMPOUND_STMT
+          CursorKind.UNARY_OPERATOR_++_post
+            var_1_char
+  CursorKind.RETURN_STMT
+    CursorKind.BINARY_OPERATOR_+
+      CursorKind.PAREN_EXPR
+        CursorKind.BINARY_OPERATOR_+
+          CursorKind.UNEXPOSED_EXPR
+            var_0_int
+          CursorKind.UNEXPOSED_EXPR
+            CursorKind.UNEXPOSED_EXPR
+              var_1_char
+      0
+"
+e1318f7438c51d6eeaee22a29cf061feb4a740dad2d03a75ca134cf188bcbb92,2,var_0_int(0),CursorKind.DECL_STMT(var_0_int(0)),"CursorKind.DECL_STMT
+  var_0_int
+    0
+"
+e5568079ef49ba15905e93c2df97e8504a86577721d5db7c5d8140a54f587b11,2,var_0_int(0),var_0_int(0),"var_0_int
+  0
+"
+5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9,6,0,0,"0
+"
+7fcae86287d816670e9864e0ce2e43a781bd8164d800b46668f7cc7c21668d62,1,var_0_char('*'),CursorKind.DECL_STMT(var_0_char(CursorKind.UNEXPOSED_EXPR('*'))),"CursorKind.DECL_STMT
+  var_0_char
+    CursorKind.UNEXPOSED_EXPR
+      '*'
+"
+b602b49bd105f6ed5c1c6f220cdf078b5ee740af94f7fb9622f01657372ddecd,1,var_0_char('*'),var_0_char(CursorKind.UNEXPOSED_EXPR('*')),"var_0_char
+  CursorKind.UNEXPOSED_EXPR
+    '*'
+"
+b2feb426671060c55aed073da9e6ac2bce710d0f250e7e3b06646c03bffc98b1,1,'*',CursorKind.UNEXPOSED_EXPR('*'),"CursorKind.UNEXPOSED_EXPR
+  '*'
+"
+15a7e30e1ab6bd46aec3f40f770cc790c558795e1ff928a303d214cc646da346,1,'*','*',"'*'
+"
+72052041d9bc0dabc37bcf1137d31ac0286e9497232649c394fdd5cf087bcc1f,1,for (var_0_int(0); var_0_int < 0; var_0_int++post) { if (var_0_int % 0 % 0) { var_1_char++post } else {  } },"CursorKind.FOR_STMT(CursorKind.DECL_STMT(var_0_int(0)),CursorKind.BINARY_OPERATOR_<(CursorKind.UNEXPOSED_EXPR(var_0_int),0),CursorKind.UNARY_OPERATOR_++_post(var_0_int),CursorKind.COMPOUND_STMT(CursorKind.IF_STMT(CursorKind.BINARY_OPERATOR_%(CursorKind.BINARY_OPERATOR_%(CursorKind.UNEXPOSED_EXPR(var_0_int),0),0),CursorKind.COMPOUND_STMT(CursorKind.UNARY_OPERATOR_++_post(var_1_char)))))","CursorKind.FOR_STMT
+  CursorKind.DECL_STMT
+    var_0_int
+      0
+  CursorKind.BINARY_OPERATOR_<
+    CursorKind.UNEXPOSED_EXPR
+      var_0_int
+    0
+  CursorKind.UNARY_OPERATOR_++_post
+    var_0_int
+  CursorKind.COMPOUND_STMT
+    CursorKind.IF_STMT
+      CursorKind.BINARY_OPERATOR_%
+        CursorKind.BINARY_OPERATOR_%
+          CursorKind.UNEXPOSED_EXPR
+            var_0_int
+          0
+        0
+      CursorKind.COMPOUND_STMT
+        CursorKind.UNARY_OPERATOR_++_post
+          var_1_char
+"
+0cf472460f3d3f6a9fb170ff241f8fe7ef9b7781b9d880ead271454445cbe227,1,var_0_int < 0,"CursorKind.BINARY_OPERATOR_<(CursorKind.UNEXPOSED_EXPR(var_0_int),0)","CursorKind.BINARY_OPERATOR_<
+  CursorKind.UNEXPOSED_EXPR
+    var_0_int
+  0
+"
+939212d87b995b7cd46a8957aeff98fede00996e062a695347af212c590c6455,3,var_0_int,CursorKind.UNEXPOSED_EXPR(var_0_int),"CursorKind.UNEXPOSED_EXPR
+  var_0_int
+"
+b01843141a759a57002cb8d5d56e2df00dc25c8ba97509de7f6d1119ec482d12,4,var_0_int,var_0_int,"var_0_int
+"
+89394d5d2c7cecd6fd703fa85f4c0b38584e6c384028abfd21e6c3695641b617,1,var_0_int++post,CursorKind.UNARY_OPERATOR_++_post(var_0_int),"CursorKind.UNARY_OPERATOR_++_post
+  var_0_int
+"
+f67456b186e8dc4d17d118e8b822947681fc28a12a5289dd243a5de8df7b920b,1,if (var_0_int % 0 % 0) { var_1_char++post } else {  },"CursorKind.COMPOUND_STMT(CursorKind.IF_STMT(CursorKind.BINARY_OPERATOR_%(CursorKind.BINARY_OPERATOR_%(CursorKind.UNEXPOSED_EXPR(var_0_int),0),0),CursorKind.COMPOUND_STMT(CursorKind.UNARY_OPERATOR_++_post(var_1_char))))","CursorKind.COMPOUND_STMT
+  CursorKind.IF_STMT
+    CursorKind.BINARY_OPERATOR_%
+      CursorKind.BINARY_OPERATOR_%
+        CursorKind.UNEXPOSED_EXPR
+          var_0_int
+        0
+      0
+    CursorKind.COMPOUND_STMT
+      CursorKind.UNARY_OPERATOR_++_post
+        var_1_char
+"
+e85b0933757e0b66dbe7189c3651c16642921a0d81860225fb05b09f09292d4b,1,if (var_0_int % 0 % 0) { var_1_char++post } else {  },"CursorKind.IF_STMT(CursorKind.BINARY_OPERATOR_%(CursorKind.BINARY_OPERATOR_%(CursorKind.UNEXPOSED_EXPR(var_0_int),0),0),CursorKind.COMPOUND_STMT(CursorKind.UNARY_OPERATOR_++_post(var_1_char)))","CursorKind.IF_STMT
+  CursorKind.BINARY_OPERATOR_%
+    CursorKind.BINARY_OPERATOR_%
+      CursorKind.UNEXPOSED_EXPR
+        var_0_int
+      0
+    0
+  CursorKind.COMPOUND_STMT
+    CursorKind.UNARY_OPERATOR_++_post
+      var_1_char
+"
+4fd903f9a42c746fa3b6c1a4827c1bb832933a32a46ef82e19a83084dfdde22a,1,var_0_int % 0 % 0,"CursorKind.BINARY_OPERATOR_%(CursorKind.BINARY_OPERATOR_%(CursorKind.UNEXPOSED_EXPR(var_0_int),0),0)","CursorKind.BINARY_OPERATOR_%
+  CursorKind.BINARY_OPERATOR_%
+    CursorKind.UNEXPOSED_EXPR
+      var_0_int
+    0
+  0
+"
+516a18d38b727aababaa7061497fac9d1314281693b4fa1ef5d33e831c70e5a9,1,var_0_int % 0,"CursorKind.BINARY_OPERATOR_%(CursorKind.UNEXPOSED_EXPR(var_0_int),0)","CursorKind.BINARY_OPERATOR_%
+  CursorKind.UNEXPOSED_EXPR
+    var_0_int
+  0
+"
+a25e6c03ad659679d505362bcf01e67f24495ee3915b206131db7777e3cef885,1,var_0_char++post,CursorKind.COMPOUND_STMT(CursorKind.UNARY_OPERATOR_++_post(var_0_char)),"CursorKind.COMPOUND_STMT
+  CursorKind.UNARY_OPERATOR_++_post
+    var_0_char
+"
+04bd8e46e9eab027f13bde97d8771234541feee26d9c930f4bb0dc8d20104f30,1,var_0_char++post,CursorKind.UNARY_OPERATOR_++_post(var_0_char),"CursorKind.UNARY_OPERATOR_++_post
+  var_0_char
+"
+ccf5376c07f524aa7703e0fba58d7c9c15e6854b55079876c86a788a6f22bb5a,2,var_0_char,var_0_char,"var_0_char
+"
+dcd9f40e7df705a4b57b895c56e070dfb391637e968845ca8d558e5a1d4a25ec,1,return CursorKind.PAREN_EXPR(var_0_int + var_1_char) + 0;,"CursorKind.RETURN_STMT(CursorKind.BINARY_OPERATOR_+(CursorKind.PAREN_EXPR(CursorKind.BINARY_OPERATOR_+(CursorKind.UNEXPOSED_EXPR(var_0_int),CursorKind.UNEXPOSED_EXPR(CursorKind.UNEXPOSED_EXPR(var_1_char)))),0))","CursorKind.RETURN_STMT
+  CursorKind.BINARY_OPERATOR_+
+    CursorKind.PAREN_EXPR
+      CursorKind.BINARY_OPERATOR_+
+        CursorKind.UNEXPOSED_EXPR
+          var_0_int
+        CursorKind.UNEXPOSED_EXPR
+          CursorKind.UNEXPOSED_EXPR
+            var_1_char
+    0
+"
+eb4420f9c3927f4400ff2fb5860cdea32bfe65612898e9b5cf7f030e011f85b5,1,CursorKind.PAREN_EXPR(var_0_int + var_1_char) + 0,"CursorKind.BINARY_OPERATOR_+(CursorKind.PAREN_EXPR(CursorKind.BINARY_OPERATOR_+(CursorKind.UNEXPOSED_EXPR(var_0_int),CursorKind.UNEXPOSED_EXPR(CursorKind.UNEXPOSED_EXPR(var_1_char)))),0)","CursorKind.BINARY_OPERATOR_+
+  CursorKind.PAREN_EXPR
+    CursorKind.BINARY_OPERATOR_+
+      CursorKind.UNEXPOSED_EXPR
+        var_0_int
+      CursorKind.UNEXPOSED_EXPR
+        CursorKind.UNEXPOSED_EXPR
+          var_1_char
+  0
+"
+5b6a4b9e450294acec8300dc5edb182dfefb49e0acd84b0af211a2e2a5e2dcd4,1,CursorKind.PAREN_EXPR(var_0_int + var_1_char),"CursorKind.PAREN_EXPR(CursorKind.BINARY_OPERATOR_+(CursorKind.UNEXPOSED_EXPR(var_0_int),CursorKind.UNEXPOSED_EXPR(CursorKind.UNEXPOSED_EXPR(var_1_char))))","CursorKind.PAREN_EXPR
+  CursorKind.BINARY_OPERATOR_+
+    CursorKind.UNEXPOSED_EXPR
+      var_0_int
+    CursorKind.UNEXPOSED_EXPR
+      CursorKind.UNEXPOSED_EXPR
+        var_1_char
+"
+09cf6dcc192d8be18cfc7a8459c9b572ec122f7c5d5693bdad63b4723caa06f7,1,var_0_int + var_1_char,"CursorKind.BINARY_OPERATOR_+(CursorKind.UNEXPOSED_EXPR(var_0_int),CursorKind.UNEXPOSED_EXPR(CursorKind.UNEXPOSED_EXPR(var_1_char)))","CursorKind.BINARY_OPERATOR_+
+  CursorKind.UNEXPOSED_EXPR
+    var_0_int
+  CursorKind.UNEXPOSED_EXPR
+    CursorKind.UNEXPOSED_EXPR
+      var_1_char
+"
+ca299d69e34a07dbe92a378f3ff5c74b4ec43ed01f82b92b4106023409778bc9,1,var_0_char,CursorKind.UNEXPOSED_EXPR(CursorKind.UNEXPOSED_EXPR(var_0_char)),"CursorKind.UNEXPOSED_EXPR
+  CursorKind.UNEXPOSED_EXPR
+    var_0_char
+"
+b7b387d0b6beb1f27d2c094219e105cdba38dc36d4521840481a7e2f119c13ba,1,var_0_char,CursorKind.UNEXPOSED_EXPR(var_0_char),"CursorKind.UNEXPOSED_EXPR
+  var_0_char
+"
