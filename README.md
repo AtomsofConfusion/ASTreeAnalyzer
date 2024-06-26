@@ -15,22 +15,23 @@ This project provides a tool for analyzing C/C++ code by extracting, serializing
    On macOS, you can install it using Homebrew:
    ```sh
    brew install llvm
-
+   ```
+   
 2. **Set up the Python environment**:
 
     ```sh
     python3 -m venv .venv
-    ```sh
     source .venv/bin/activate
-    ```sh
     pip install clang
-
+    ```
+    
 3. **Set up Clang library path**:
 
     Here is an example for macOS:
     ```sh
     library_file = '/opt/homebrew/opt/llvm/lib/libclang.dylib'
-
+    ```
+    
 ## Usage
 
 1. **Assign your target:**
@@ -42,7 +43,8 @@ This project provides a tool for analyzing C/C++ code by extracting, serializing
 
     ```sh
     python parse.py
-
+    ```
+    
 3. **Output:**
 
     The script will generate a subtrees.csv file containing the following columns:
@@ -55,24 +57,23 @@ This project provides a tool for analyzing C/C++ code by extracting, serializing
 
 ## Script Details
 
-    `parse.py`
-    This script contains the following main functions:
+   `parse.py`
+   This script contains the following main functions:
+   - serialize_node(node, anon_map=None): Serializes an AST node, anonymizing variable names.
+   - extract_subtrees(node, subtrees=None): Extracts all subtrees starting from a given node.
+   - hash_subtree(subtree): Returns the SHA-256 hash of a serialized subtree.
+   - count_subtrees(subtrees): Counts the occurrences of each subtree.
+   - deserialize_subtree(serialized_subtree): Deserializes a serialized subtree back into its tree structure.
+   - print_tree(node, depth=0): Pretty prints a deserialized tree.
+   - parse_to_ast(file_path): Parses a C/C++ file into an AST using Clang.
+   - tree_to_expression(node): Converts a deserialized subtree into a human-readable expression.
 
-    - serialize_node(node, anon_map=None): Serializes an AST node, anonymizing variable names.
-    - extract_subtrees(node, subtrees=None): Extracts all subtrees starting from a given node.
-    - hash_subtree(subtree): Returns the SHA-256 hash of a serialized subtree.
-    - count_subtrees(subtrees): Counts the occurrences of each subtree.
-    - deserialize_subtree(serialized_subtree): Deserializes a serialized subtree back into its tree structure.
-    - print_tree(node, depth=0): Pretty prints a deserialized tree.
-    - parse_to_ast(file_path): Parses a C/C++ file into an AST using Clang.
-    - tree_to_expression(node): Converts a deserialized subtree into a human-readable expression.
-
-    `add.c`
-    This is an example C file for parsing. `subtrees.csv` contains the output of `parse.py` with `add.c` as the target file.
+   `add.c`
+   This is an example C file for parsing. `subtrees.csv` contains the output of `parse.py` with `add.c` as the target file.
     
 ## Acknowledgments
-    [LLVM Project](llvm.org)
-    [Clang Python Bindings](https://pypi.org/project/clang/)
+   - [LLVM Project](llvm.org)
+   - [Clang Python Bindings](https://pypi.org/project/clang/)
 
 ## Author
 - [Anuraag Pandhi](https://github.com/Anumon6395)
