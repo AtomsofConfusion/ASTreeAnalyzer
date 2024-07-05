@@ -142,70 +142,79 @@ def tree_to_expression(node):
         return str(node_rep)
 
     if node_rep.startswith("CursorKind.BINARY_OPERATOR"):
-        lhs = tree_to_expression(children[0])
-        rhs = tree_to_expression(children[1])
-        return f"{lhs} {node_rep.split('_')[-1]} {rhs}"
+        if len(children) >= 2:
+            lhs = tree_to_expression(children[0])
+            rhs = tree_to_expression(children[1])
+            return f"{lhs} {node_rep.split('_')[-1]} {rhs}"
     elif node_rep.startswith("CursorKind.UNARY_OPERATOR"):
-        parts = node_rep.split('_')
-        operator = parts[-2] + parts[-1]
-        operand = tree_to_expression(children[0])
-        return f"{operator}{operand}" if '_pre' in operator else f"{operand}{operator}"
+        if len(children) >= 1:
+            parts = node_rep.split('_')
+            operator = parts[-2] + parts[-1]
+            operand = tree_to_expression(children[0])
+            return f"{operator}{operand}" if '_pre' in operator else f"{operand}{operator}"
     elif node_rep.startswith("CursorKind.VAR_DECL"):
-        var_name = tree_to_expression(children[0])
-        if len(children) > 1:
-            initializer = tree_to_expression(children[1])
-            return f"{var_name} = {initializer}"
-        else:
-            return var_name
+        if len(children) >= 1:
+            var_name = tree_to_expression(children[0])
+            if len(children) > 1:
+                initializer = tree_to_expression(children[1])
+                return f"{var_name} = {initializer}"
+            else:
+                return var_name
     elif node_rep.startswith("CursorKind.DECL_STMT"):
         return " ".join(tree_to_expression(child) for child in children)
     elif node_rep.startswith("CursorKind.DECL_REF_EXPR"):
-        return str(children[0][0])
+        if len(children) >= 1:
+            return str(children[0][0])
     elif node_rep.startswith("CursorKind.INTEGER_LITERAL"):
         return '0'
     elif node_rep.startswith("CursorKind.FLOATING_LITERAL") or node_rep.startswith("CursorKind.DOUBLE_LITERAL"):
         return '0.0'
     elif node_rep.startswith("CursorKind.CHARACTER_LITERAL"):
         return "'*'"
-    elif node_rep.startswith("CursorKind.STRING_LITERAL"):
-        return '"str"'
     elif node_rep.startswith("CursorKind.ASSIGNMENT_OPERATOR"):
-        lhs = tree_to_expression(children[0])
-        rhs = tree_to_expression(children[1])
-        return f"{lhs} = {rhs}"
+        if len(children) >= 2:
+            lhs = tree_to_expression(children[0])
+            rhs = tree_to_expression(children[1])
+            return f"{lhs} = {rhs}"
     elif node_rep.startswith("CursorKind.FUNCTION_DECL"):
-        return_type = tree_to_expression(children[0])
-        function_name = tree_to_expression(children[1])
-        params = ", ".join(tree_to_expression(child) for child in children[2:])
-        return f"{return_type} {function_name}({params})"
+        if len(children) >= 2:
+            return_type = tree_to_expression(children[0])
+            function_name = tree_to_expression(children[1])
+            params = ", ".join(tree_to_expression(child) for child in children[2:])
+            return f"{return_type} {function_name}({params})"
     elif node_rep.startswith("CursorKind.CALL_EXPR"):
-        function_name = tree_to_expression(children[0])
-        args = ", ".join(tree_to_expression(child) for child in children[1:])
-        return f"{function_name}({args})"
+        if len(children) >= 1:
+            function_name = tree_to_expression(children[0])
+            args = ", ".join(tree_to_expression(child) for child in children[1:])
+            return f"{function_name}({args})"
     elif node_rep.startswith("CursorKind.IF_STMT"):
-        condition = tree_to_expression(children[0])
-        then_branch = tree_to_expression(children[1])
-        else_branch = tree_to_expression(children[2]) if len(children) > 2 else ''
-        return f"if ({condition}) {{ {then_branch} }} else {{ {else_branch} }}"
+        if len(children) >= 2:
+            condition = tree_to_expression(children[0])
+            then_branch = tree_to_expression(children[1])
+            else_branch = tree_to_expression(children[2]) if len(children) > 2 else ''
+            return f"if ({condition}) {{ {then_branch} }} else {{ {else_branch} }}"
     elif node_rep.startswith("CursorKind.FOR_STMT"):
-        init = tree_to_expression(children[0])
-        condition = tree_to_expression(children[1])
-        increment = tree_to_expression(children[2])
-        body = tree_to_expression(children[3])
-        return f"for ({init}; {condition}; {increment}) {{ {body} }}"
+        if len(children) >= 4:
+            init = tree_to_expression(children[0])
+            condition = tree_to_expression(children[1])
+            increment = tree_to_expression(children[2])
+            body = tree_to_expression(children[3])
+            return f"for ({init}; {condition}; {increment}) {{ {body} }}"
     elif node_rep.startswith("CursorKind.WHILE_STMT"):
-        condition = tree_to_expression(children[0])
-        body = tree_to_expression(children[1])
-        return f"while ({condition}) {{ {body} }}"
+        if len(children) >= 2:
+            condition = tree_to_expression(children[0])
+            body = tree_to_expression(children[1])
+            return f"while ({condition}) {{ {body} }}"
     elif node_rep.startswith("CursorKind.RETURN_STMT"):
-        return f"return {tree_to_expression(children[0])};"
+        if len(children) >= 1:
+            return f"return {tree_to_expression(children[0])};"
     elif node_rep.startswith("CursorKind.UNEXPOSED_EXPR"):
-        return tree_to_expression(children[0])
-    elif node_rep.startswith("CursorKind.COMPOUND_STMT"):
-        return " ".join(tree_to_expression(child) for child in children)
+        if len(children) >= 1:
+            return tree_to_expression(children[0])
     else:
         return f"{node_rep}(" + ", ".join(tree_to_expression(child) for child in children) + ")"
 
+    return str(node_rep)
 
 
 def parse(input_path: str, output_dir: str):
