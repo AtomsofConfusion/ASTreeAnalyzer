@@ -156,6 +156,7 @@ class ASTSerializer:
         if subtrees is None:
             subtrees = []
 
+        self.anon_map.clear()
         subtree = self._serialize_node(node)
         subtrees.append(subtree)
 
