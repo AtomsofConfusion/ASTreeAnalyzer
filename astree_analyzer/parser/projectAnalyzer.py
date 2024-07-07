@@ -1,25 +1,42 @@
+import pstats
 from parse import *
 import os
 import time
 import pickle
+import cProfile
+from pathlib import Path
 
 # Start timing
 start_time = time.time()
 print("Start:", start_time)
 
+profiler = cProfile.Profile()
+
+profile = False
+
 def process_directory(directory):
     all_subtrees = []
-    for root, _, files in os.walk(directory):
-        for filename in files:
-            if filename.endswith(".c"): #or filename.endswith(".cpp"):
-                filepath = os.path.join(root, filename)
-                try:
-                    ast = parse_to_ast(filepath)
-                    subtrees = extract_subtrees(ast)
-                    all_subtrees.extend(subtrees)
-                    print("Completed:", filename)
-                except Exception as e:
-                    print(f"Error processing {filename}: {e}")
+    serializer = ASTSerializer()
+    for file_path in Path(directory).rglob('*.c'):
+        try:
+            if profile:
+                profiler.enable()
+            filename = file_path.name
+            print(f"Parsing {filename}")
+            file_start_time = time.time()
+            subtrees = serializer.extract_subrees_for_file(file_path)
+            if profile:
+                profiler.disable()
+                stats = pstats.Stats(profiler).sort_stats('cumtime')
+                stats.print_stats()
+                # Optionally, save the stats for later analysis:
+                stats.dump_stats('profile_results.prof')
+            file_end_time = time.time()
+            print(file_end_time - file_start_time)
+            all_subtrees.extend(subtrees)
+            print("Completed:", filename)
+        except Exception as e:
+            print(f"Error processing {filename}: {e}")
     return all_subtrees
 
 # Load any existing subtrees if available
