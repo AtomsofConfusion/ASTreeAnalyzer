@@ -39,15 +39,17 @@ clang.cindex.Config.set_library_file(library_file)
 class ASTSerializer:
     def __init__(self, primitive_replacements=PRIMITICE_REPLACEMENTS):
         self.primitive_replacements = primitive_replacements
-        self.node_cache = {}
-        self.anon_map = {}
 
 
     def extract_subrees_for_file(self, filepath):
+        self.node_cache = {}
+        self.anon_map = {}
         ast = parse_to_ast(filepath)
         subtrees = self._extract_subtrees(ast)
         self.node_cache.clear()
         self.anon_map.clear()
+        del self.node_cache
+        del self.anon_map
         return subtrees
 
 

@@ -1,5 +1,6 @@
+from pathlib import Path
 import click
-from parser.parse import parse  # Replace with your actual function
+from parser.projectAnalyzer import process_file, process_directory
 
 
 @click.group()
@@ -8,11 +9,29 @@ def ast():
     pass
 
 @ast.command()
-@click.argument('input_file', type=click.Path(exists=True))
-@click.argument('output_dir', type=click.Path(exists=True))
-def analyze(input_file, output_dir):
+@click.argument("input_file", type=click.Path(exists=True))
+@click.argument("output_file", type=click.Path())
+@click.option("--human-readable", is_flag=True, default=False, help="Include human-readable columns in the output.")
+@click.option("--profile", is_flag=True, default=False, help="Profile using cProfile")
+def parse_file(input_file, output_file, human_readable, profile):
     """Analyze the given INPUT_FILE."""
-    result = parse(input_file, output_dir)
-    click.echo(result)
+    process_file(
+        Path(input_file),
+        Path(output_file),
+        include_human_readable=human_readable,
+        profile=profile
+    )
+
+@ast.command
+@click.argument("input_dir", type=click.Path(exists=True))
+@click.argument("output_file",  type=click.Path())
+@click.option("--human-readable", is_flag=True, default=False, help="Include human-readable columns in the output.")
+def parse_dir(input_dir, output_file ,human_readable):
+    process_directory(
+        Path(input_dir),
+        Path(output_file),
+        include_human_readable=human_readable,
+    )
+
 
 ast()
