@@ -1,5 +1,7 @@
+from multiprocessing import Process, Queue
 import pstats
 import datetime
+import tempfile
 from typing import Optional
 from parser.parse import *
 import os
@@ -22,13 +24,27 @@ def process_directory(intput_dir, output, include_human_readable=False):
     start_time = time.time()
     print("Start:", _convert_time(start_time))
 
-    all_subtrees = []
+    temp_dir = tempfile.TemporaryDirectory()
+    temp_file = Path(temp_dir.name, "temp_results.csv")
+    print(f"Writing temp to {temp_file}")
 
-    for filepath in Path(intput_dir).rglob('*.c'):
-        subtrees = process_file(filepath)
-        all_subtrees.extend(subtrees)
+    queue = Queue()
+    # Start the subtree generator process
+    filepaths = list(intput_dir.rglob('*.c'))[:3]
+    producer = Process(target=_generate_subtrees, args=(filepaths, queue))
+    # Start the writer process
+    consumer = Process(target=_write_to_temp, args=(temp_file, queue))
 
-    _write_subtrees(output, subtrees, include_human_readable=include_human_readable)
+    producer.start()
+    consumer.start()
+
+    producer.join()
+    consumer.join()
+
+
+
+    _write_to_final_output(temp_file, output)
+    temp_dir.cleanup()
 
     end_time = time.time()
     print("End:", _convert_time(end_time))
@@ -38,7 +54,12 @@ def process_directory(intput_dir, output, include_human_readable=False):
     print(f"Time elapsed: {elapsed_time:.2f} seconds")
 
 
-def process_file(filepath: Path, output: Optional[Path]=None, include_human_readable: Optional[bool]=False, profile: Optional[bool]=False):
+def process_file(
+    filepath: Path,
+    output: Optional[Path]=None,
+    include_human_readable: Optional[bool]=False,
+    profile: Optional[bool]=False
+):
     serializer = ASTSerializer()
     filename = filepath.name
 
@@ -60,6 +81,7 @@ def process_file(filepath: Path, output: Optional[Path]=None, include_human_read
 
         file_end_time = time.time()
         print(file_end_time - file_start_time)
+
         if output:
             _write_subtrees(output, subtrees, include_human_readable=include_human_readable)
 
@@ -69,6 +91,79 @@ def process_file(filepath: Path, output: Optional[Path]=None, include_human_read
     except Exception as e:
         print(f"Error processing {filename}: {e}")
         raise
+
+
+def _generate_subtrees(
+    filepaths,
+    queue
+):
+
+    for filepath in filepaths:
+        filepath = Path(filepath)
+        serializer = ASTSerializer()
+        filename = filepath.name
+        try:
+            print(f"Parsing {filename}")
+
+            file_start_time = time.time()
+            subtrees = serializer.extract_subrees_for_file(filepath)
+            file_end_time = time.time()
+            print(file_end_time - file_start_time)
+
+            print("Completed:", filename)
+            queue.put(subtrees)
+
+        except Exception as e:
+            print(f"Error processing {filename}: {e}")
+            raise
+    queue.put(None)
+
+
+def _write_to_temp(temp_file: Path, queue):
+    # Append results to the temporary CSV file
+
+    while True:
+        subtrees = queue.get()
+        if subtrees is None:
+            break
+        print("Consumer: writing to temp")
+        rows = []
+        subtree_counter = count_subtrees(subtrees)
+        for subtree, count in subtree_counter.items():
+            hash_val = hash_subtree(subtree)
+            rows.append([hash_val, count, subtree])
+
+        with temp_file.open("a", newline="") as file:
+            writer = csv.writer(file)
+            writer.writerows(rows)
+
+
+def _write_to_final_output(temp_file, output):
+    subtrees_with_count = {}
+    csv.field_size_limit(2**31 - 1)
+    with open(temp_file, "r", newline="") as file:
+        reader = csv.reader(file)
+        for row in reader:
+            hash_val = row[0]
+            count = int(row[1])
+            if not hash_val in subtrees_with_count:
+                subtree = row[2]
+                subtrees_with_count[hash_val] = {
+                "Hash": hash_val,
+                "Count": count,
+                "Serialized Subtree": subtree
+                }
+            else:
+                subtrees_with_count[hash_val]["Count"] = subtrees_with_count[hash_val]["Count"] + count
+
+    with open(output, "w", newline="") as csvfile:
+        fieldnames = ["Hash", "Count", "Serialized Subtree"]
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer.writeheader()
+        for subtree_with_count in subtrees_with_count.values():
+            writer.writerow(subtree_with_count)
+
+    print(f"Reuslts saved to {output.absolute().resolve()}")
 
 
 def _write_subtrees(output: Path, subtrees: list, include_human_readable: Optional[bool]=False):
@@ -89,12 +184,12 @@ def _write_subtrees(output: Path, subtrees: list, include_human_readable: Option
         output.write_text("")  # Clears the file
 
         if include_human_readable:
-            fieldnames = ['Hash', 'Count', 'Human Readable Expression', 'Serialized Subtree', 'Deserialized Tree']
+            fieldnames = ["Hash", "Count", "Human Readable Expression", "Serialized Subtree", "Deserialized Tree"]
         else:
-            fieldnames = ['Hash', 'Count', 'Serialized Subtree']
+            fieldnames = ["Hash", "Count", "Serialized Subtree"]
 
 
-        with open(output, "a", newline="") as csvfile:
+        with open(output, "w", newline="") as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
             writer.writeheader()
             for subtree, count in subtree_counter.items():
@@ -104,17 +199,17 @@ def _write_subtrees(output: Path, subtrees: list, include_human_readable: Option
                     deserialized_tree = subtree_map[subtree]
                     human_readable_expression = tree_to_expression(deserialize_subtree(subtree))
                     writer.writerow({
-                        'Hash': hash_val,
-                        'Count': count,
-                        'Human Readable Expression': human_readable_expression,
-                        'Serialized Subtree': subtree,
-                        'Deserialized Tree': deserialized_tree
+                        "Hash": hash_val,
+                        "Count": count,
+                        "Human Readable Expression": human_readable_expression,
+                        "Serialized Subtree": subtree,
+                        "Deserialized Tree": deserialized_tree
                     })
                 else:
                     writer.writerow({
-                        'Hash': hash_val,
-                        'Count': count,
-                        'Serialized Subtree': subtree,
+                        "Hash": hash_val,
+                        "Count": count,
+                        "Serialized Subtree": subtree,
                     })
 
         print(f"Reuslts saved to {output.absolute().resolve()}")
