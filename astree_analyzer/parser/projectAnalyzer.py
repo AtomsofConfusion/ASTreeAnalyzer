@@ -9,7 +9,7 @@ import time
 import pickle
 import cProfile
 from pathlib import Path
-
+from tqdm import tqdm
 
 
 profiler = cProfile.Profile()
@@ -30,7 +30,7 @@ def process_directory(intput_dir, output, include_human_readable=False):
 
     queue = Queue()
     # Start the subtree generator process
-    filepaths = list(intput_dir.rglob('*.c'))[:3]
+    filepaths = list(intput_dir.rglob('*.c'))
     producer = Process(target=_generate_subtrees, args=(filepaths, queue))
     # Start the writer process
     consumer = Process(target=_write_to_temp, args=(temp_file, queue))
@@ -40,8 +40,6 @@ def process_directory(intput_dir, output, include_human_readable=False):
 
     producer.join()
     consumer.join()
-
-
 
     _write_to_final_output(temp_file, output)
     temp_dir.cleanup()
@@ -98,21 +96,13 @@ def _generate_subtrees(
     queue
 ):
 
-    for filepath in filepaths:
+    for filepath in tqdm(filepaths, desc="Processing files"):
         filepath = Path(filepath)
         serializer = ASTSerializer()
         filename = filepath.name
         try:
-            print(f"Parsing {filename}")
-
-            file_start_time = time.time()
             subtrees = serializer.extract_subrees_for_file(filepath)
-            file_end_time = time.time()
-            print(file_end_time - file_start_time)
-
-            print("Completed:", filename)
             queue.put(subtrees)
-
         except Exception as e:
             print(f"Error processing {filename}: {e}")
             raise
@@ -126,7 +116,6 @@ def _write_to_temp(temp_file: Path, queue):
         subtrees = queue.get()
         if subtrees is None:
             break
-        print("Consumer: writing to temp")
         rows = []
         subtree_counter = count_subtrees(subtrees)
         for subtree, count in subtree_counter.items():
@@ -169,7 +158,6 @@ def _write_to_final_output(temp_file, output):
 def _write_subtrees(output: Path, subtrees: list, include_human_readable: Optional[bool]=False):
     try:
 
-        print("Writing to CSV")
         if not output.parent.is_dir():
             output.mkdir(parents=True)
 
