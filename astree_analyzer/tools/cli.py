@@ -1,11 +1,11 @@
-import sys
-import os
 from pathlib import Path
 import click
 import multiprocessing
 
+# import sys
+# import os
 # Add the parent directory to the sys.path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+#sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from parser.projectAnalyzer import process_file, process_directory
 
