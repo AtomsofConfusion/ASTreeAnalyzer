@@ -4,89 +4,184 @@ import clang.cindex
 import hashlib
 from collections import Counter
 from pathlib import Path
-from . import PROJECT_ROOT
 
 # Change path as necessary. This is for Mac.
-
+PROJECT_ROOT = Path(__file__).parent.parent.parent
 if platform.system() ==  "Windows":
     library_file = str(PROJECT_ROOT / "libs/windows/libclang.dll")
 else:
     library_file = '/opt/homebrew/opt/llvm/lib/libclang.dylib'
 
 
+IDENTIFIER_KINDS = {
+    clang.cindex.CursorKind.VAR_DECL,
+    clang.cindex.CursorKind.PARM_DECL,
+    clang.cindex.CursorKind.FIELD_DECL,
+    clang.cindex.CursorKind.FUNCTION_DECL,
+    clang.cindex.CursorKind.DECL_REF_EXPR
+}
+
+# Extended beyond just primitives
+PRIMITICE_REPLACEMENTS = {
+    clang.cindex.CursorKind.INTEGER_LITERAL: '0',
+    clang.cindex.CursorKind.FLOATING_LITERAL: '0.0',
+    clang.cindex.CursorKind.CHARACTER_LITERAL: "'*'",
+    clang.cindex.CursorKind.CXX_BOOL_LITERAL_EXPR: 'false',
+    clang.cindex.CursorKind.STRING_LITERAL: '"str"' # not primitive, add more as needed
+}
+
+BINARY_OPERATORS = {'+', '-', '*', '/', '%', '<', '>', '<=', '>=', '==', '!=', '&', '|', '^', '&&', '||', '=', '+=', '-=', '*=', '/=', '%=', '&=', '|=', '^='}
+UNARY_OPERATORS = {'++', '--', '+', '-', '!', '~'}
+
 clang.cindex.Config.set_library_file(library_file)
 
-def serialize_node(node, anon_map=None):
-    if anon_map is None:
-        anon_map = {}
-    identifier_kinds = {
-        clang.cindex.CursorKind.VAR_DECL,
-        clang.cindex.CursorKind.PARM_DECL,
-        clang.cindex.CursorKind.FIELD_DECL,
-        clang.cindex.CursorKind.FUNCTION_DECL,
-        clang.cindex.CursorKind.DECL_REF_EXPR
-    }
 
-    # Extended beyond just primitives
-    primitive_replacements = {
-        clang.cindex.CursorKind.INTEGER_LITERAL: '0',
-        clang.cindex.CursorKind.FLOATING_LITERAL: '0.0',
-        clang.cindex.CursorKind.CHARACTER_LITERAL: "'*'",
-        clang.cindex.CursorKind.CXX_BOOL_LITERAL_EXPR: 'false',
-        clang.cindex.CursorKind.STRING_LITERAL: '"str"' # not primitive, add more as needed
-    }
+class ASTSerializer:
+    def __init__(self, primitive_replacements=PRIMITICE_REPLACEMENTS):
+        self.primitive_replacements = primitive_replacements
 
-    if node.kind in identifier_kinds:
-        if node.spelling not in anon_map:
-            anon_map[node.spelling] = f"var_{len(anon_map)}"
-        node_rep = f"{anon_map[node.spelling]}_{node.type.spelling}"
-        if '[' in node.type.spelling and ']' in node.type.spelling:
-            base_type, subscript = node.type.spelling.split('[', 1)
-            subscript = 0  # interpret as an integer literal for anonymization
-            node_rep = f"{anon_map[node.spelling]}_{base_type}[{subscript}]"
-    elif node.kind in primitive_replacements:
-        node_rep = primitive_replacements[node.kind]
-    else:
-        node_rep = str(node.kind)
 
-    if node.kind == clang.cindex.CursorKind.BINARY_OPERATOR:
-        tokens = list(node.get_tokens())
-        operator = None
-        for token in tokens:
-            if token.spelling in {'+', '-', '*', '/', '%', '<', '>', '<=', '>=', '==', '!=', '&', '|', '^', '&&', '||', '=', '+=', '-=', '*=', '/=', '%=', '&=', '|=', '^='}:
-                operator = token.spelling
-                break
-        if operator:
-            node_rep = f"{node_rep}_{operator}"
-    elif node.kind == clang.cindex.CursorKind.UNARY_OPERATOR:
-        tokens = list(node.get_tokens())
-        if tokens:
-            if tokens[0].spelling in {'++', '--', '+', '-', '!', '~'}:
-                operator = tokens[0].spelling + '_pre'
-            elif tokens[-1].spelling in {'++', '--', '+', '-', '!', '~'}:
-                operator = tokens[-1].spelling + '_post'
+    def extract_subrees_for_file(self, filepath):
+        self.node_cache = {}
+        self.anon_map = {}
+        ast = parse_to_ast(filepath)
+        subtrees = self._extract_subtrees(ast)
+        self.node_cache.clear()
+        self.anon_map.clear()
+        del self.node_cache
+        del self.anon_map
+        return subtrees
+
+
+    def _get_node_cache(self, node):
+        node_id = node.hash
+        node_data = self.node_cache.get(node_id)
+        if node_data is None:
+            node_data = {}
+            self.node_cache[node_id] = node_data
+        return node_data
+
+    def _get_node_children(self, node):
+        node_data = self._get_node_cache(node)
+        children = node_data.get("children")
+        if children is None:
+            children = list(node.get_children())
+            node_data["children"] = children
+        return children
+
+    def _serialize_node(self, node):
+        node_data = self._get_node_cache(node)
+        node_kind = node_data.get("kind")
+        if node_kind is None:
+            node_kind = node.kind
+            node_data["kind"] = node_kind
+
+        if node_kind in IDENTIFIER_KINDS:
+            node_spelling = node_data.get("spelling")
+            if node_spelling is None:
+                node_spelling = node.spelling
+                node_data["spelling"] = node_spelling
+
+            anon_name = self.anon_map.get(node_spelling)
+            node_type_spelling = node.type.spelling
+
+            if anon_name is None:
+                anon_name = f"var_{len(self.anon_map)}"
+                self.anon_map[node_spelling] = anon_name
+
+            node_rep = f"{anon_name}_{node_type_spelling}"
+
+            index = node_type_spelling.find('[')
+            if index != -1:
+                base_type = node_type_spelling[:index]
+                subscript = node_type_spelling[index+1:]
+                # base_type, subscript = node_type_spelling.split('[', 1)
+                subscript = 0  # interpret as an integer literal for anonymization
+                node_rep = f"{anon_name}_{base_type}[{subscript}]"
+        else:
+            # if the representation does not depend on the anonimization data
+            # it can be cached/read from cache
+            cahced_node_rep = node_data.get("node_rep")
+
+            if cahced_node_rep is None:
+                node_rep = self.primitive_replacements.get(node_kind)
+                if node_rep is None:
+                    node_rep = str(node_kind)
+
+                if node_kind == clang.cindex.CursorKind.BINARY_OPERATOR:
+                    operator = None
+                    for token in node.get_tokens():
+                        token_spelling = token.spelling
+                        if token_spelling in BINARY_OPERATORS:
+                            operator = token_spelling
+                            break
+                    if operator:
+                        node_rep = f"{node_rep}_{operator}"
+                elif node_kind == clang.cindex.CursorKind.UNARY_OPERATOR:
+                    first_token, last_token = _get_fisrt_and_last_tokens(node)
+                    if first_token:
+                        first_token_spelling = first_token.spelling
+                        last_token_spelling = last_token.spelling
+                        if first_token_spelling in UNARY_OPERATORS:
+                            operator = first_token_spelling + '_pre'
+                        elif last_token_spelling in UNARY_OPERATORS:
+                            operator = last_token_spelling + '_post'
+                        else:
+                            operator = first_token_spelling
+                        node_rep = f"{node_rep}_{operator}"
+                elif node_kind == clang.cindex.CursorKind.CALL_EXPR:
+                    node_rep = f"{node_rep}_{node.displayname}"
+
+                node_data["node_rep"] = node_rep
             else:
-                operator = tokens[0].spelling
-            node_rep = f"{node_rep}_{operator}"
-    elif node.kind == clang.cindex.CursorKind.CALL_EXPR:
-        node_rep = f"{node_rep}_{node.displayname}"
-    elif node.kind == clang.cindex.CursorKind.ARRAY_SUBSCRIPT_EXPR:
-        array_base = serialize_node(list(node.get_children())[0], anon_map)
-        subscript = serialize_node(list(node.get_children())[1], anon_map)
-        node_rep = f"{array_base}[{subscript}]"
+                node_rep = cahced_node_rep
 
-    children_rep = [serialize_node(child, anon_map) for child in node.get_children() if node.kind != clang.cindex.CursorKind.ARRAY_SUBSCRIPT_EXPR]
-    return f"{node_rep}({','.join(children_rep)})" if children_rep else node_rep
 
-# Gets all subtrees with node parameter as root
-def extract_subtrees(node, subtrees=None):
-    if subtrees is None:
+        if node_kind == clang.cindex.CursorKind.ARRAY_SUBSCRIPT_EXPR:
+            children_iterator = node.get_children()
+            first_child = next(children_iterator, None)
+            second_child = next(children_iterator, None)
+
+            array_base = self._serialize_node(first_child)
+            subscript = self._serialize_node(second_child)
+            node_rep = f"{array_base}[{subscript}]"
+            children_rep = []
+        else:
+            children = self._get_node_children(node)
+            children_rep = [self._serialize_node(child) for child in children]
+
+        return f"{node_rep}({','.join(children_rep)})" if children_rep else node_rep
+
+
+    # Gets all subtrees with node parameter as root
+    def _extract_subtrees(self, root):
         subtrees = []
-    subtree = serialize_node(node)
-    subtrees.append(subtree)
-    for child in node.get_children():
-        extract_subtrees(child, subtrees)
-    return subtrees
+        stack = [root]
+
+        while stack:
+            node = stack.pop()
+
+            self.anon_map.clear()
+            subtree = self._serialize_node(node)
+            subtrees.append(subtree)
+
+            children = self._get_node_children(node)
+
+            for child in children:
+                stack.append(child)
+        return subtrees
+
+
+def _get_fisrt_and_last_tokens(node):
+    tokens_iterator = node.get_tokens()
+    first_token = next(tokens_iterator, None)
+    last_token = first_token  # Initialize last_token in case there's only one
+    if not first_token:
+        return first_token, last_token
+
+    for last_token in tokens_iterator:  # This will end with the last token
+        pass
+    return first_token, last_token
 
 def hash_subtree(subtree):
     return hashlib.sha256(subtree.encode('utf-8')).hexdigest()
@@ -221,9 +316,8 @@ def parse(input_path: str, output_dir: str):
     """
     TODO write docstring
     """
-
-    ast = parse_to_ast(input_path)
-    subtrees = extract_subtrees(ast)
+    serializer = ASTSerializer()
+    subtrees = serializer.extract_subrees_for_file(input_path)
 
     # Create a mapping between serialized and deserialized subtrees
     subtree_map = {subtree: print_tree(deserialize_subtree(subtree)) for subtree in subtrees}
