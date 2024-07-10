@@ -22,7 +22,7 @@ IDENTIFIER_KINDS = {
 }
 
 # Extended beyond just primitives
-PRIMITICE_REPLACEMENTS = {
+PRIMITIVE_REPLACEMENTS = {
     clang.cindex.CursorKind.INTEGER_LITERAL: '0',
     clang.cindex.CursorKind.FLOATING_LITERAL: '0.0',
     clang.cindex.CursorKind.CHARACTER_LITERAL: "'*'",
@@ -35,23 +35,31 @@ UNARY_OPERATORS = {'++', '--', '+', '-', '!', '~'}
 
 clang.cindex.Config.set_library_file(library_file)
 
+class ExtendedCursorKind(clang.cindex.CursorKind):
+    UNKNOWN_TEMPLATE_ARGUMENT_KIND = clang.cindex.CursorKind(10000)
+
+def extend_cursor_kind():
+    # Add mappings for known unknown kinds
+    known_unknown_kinds = [436, 437]
+    for kind_id in known_unknown_kinds:
+        if kind_id not in clang.cindex.CursorKind._kinds:
+            clang.cindex.CursorKind._kinds[kind_id] = ExtendedCursorKind.UNKNOWN_TEMPLATE_ARGUMENT_KIND
+
+extend_cursor_kind()
+
 
 class ASTSerializer:
-    def __init__(self, primitive_replacements=PRIMITICE_REPLACEMENTS):
+    def __init__(self, primitive_replacements=PRIMITIVE_REPLACEMENTS):
         self.primitive_replacements = primitive_replacements
-
-
-    def extract_subrees_for_file(self, filepath):
         self.node_cache = {}
         self.anon_map = {}
-        ast = parse_to_ast(filepath)
-        subtrees = self._extract_subtrees(ast)
+
+    def extract_subrees_for_file(self, filepath):
         self.node_cache.clear()
         self.anon_map.clear()
-        del self.node_cache
-        del self.anon_map
+        ast = parse_to_ast(filepath)
+        subtrees = self._extract_subtrees(ast)
         return subtrees
-
 
     def _get_node_cache(self, node):
         node_id = node.hash
@@ -73,10 +81,20 @@ class ASTSerializer:
         node_data = self._get_node_cache(node)
         node_kind = node_data.get("kind")
         if node_kind is None:
-            node_kind = node.kind
+            try:
+                node_kind = node.kind
+            except ValueError as e:
+                # Extract the kind_id from the exception message
+                kind_id = int(str(e).split()[-1])
+                # Dynamically add this kind to the CursorKind mappings if not present
+                if kind_id not in clang.cindex.CursorKind._kinds:
+                    clang.cindex.CursorKind._kinds[kind_id] = ExtendedCursorKind.UNKNOWN_TEMPLATE_ARGUMENT_KIND
+                node_kind = clang.cindex.CursorKind.from_id(kind_id)
             node_data["kind"] = node_kind
 
-        if node_kind in IDENTIFIER_KINDS:
+        if node_kind == ExtendedCursorKind.UNKNOWN_TEMPLATE_ARGUMENT_KIND:
+            node_rep = "UnknownTemplateArgument"
+        elif node_kind in IDENTIFIER_KINDS:
             node_spelling = node_data.get("spelling")
             if node_spelling is None:
                 node_spelling = node.spelling
@@ -94,16 +112,13 @@ class ASTSerializer:
             index = node_type_spelling.find('[')
             if index != -1:
                 base_type = node_type_spelling[:index]
-                subscript = node_type_spelling[index+1:]
-                # base_type, subscript = node_type_spelling.split('[', 1)
+                subscript = node_type_spelling[index + 1:]
                 subscript = 0  # interpret as an integer literal for anonymization
                 node_rep = f"{anon_name}_{base_type}[{subscript}]"
         else:
-            # if the representation does not depend on the anonimization data
-            # it can be cached/read from cache
-            cahced_node_rep = node_data.get("node_rep")
+            cached_node_rep = node_data.get("node_rep")
 
-            if cahced_node_rep is None:
+            if cached_node_rep is None:
                 node_rep = self.primitive_replacements.get(node_kind)
                 if node_rep is None:
                     node_rep = str(node_kind)
@@ -118,7 +133,7 @@ class ASTSerializer:
                     if operator:
                         node_rep = f"{node_rep}_{operator}"
                 elif node_kind == clang.cindex.CursorKind.UNARY_OPERATOR:
-                    first_token, last_token = _get_fisrt_and_last_tokens(node)
+                    first_token, last_token = _get_first_and_last_tokens(node)
                     if first_token:
                         first_token_spelling = first_token.spelling
                         last_token_spelling = last_token.spelling
@@ -134,8 +149,7 @@ class ASTSerializer:
 
                 node_data["node_rep"] = node_rep
             else:
-                node_rep = cahced_node_rep
-
+                node_rep = cached_node_rep
 
         if node_kind == clang.cindex.CursorKind.ARRAY_SUBSCRIPT_EXPR:
             children_iterator = node.get_children()
@@ -152,6 +166,22 @@ class ASTSerializer:
 
         return f"{node_rep}({','.join(children_rep)})" if children_rep else node_rep
 
+    def _extract_subtrees(self, root):
+        subtrees = []
+        stack = [root]
+
+        while stack:
+            node = stack.pop()
+
+            self.anon_map.clear()
+            subtree = self._serialize_node(node)
+            subtrees.append(subtree)
+
+            children = self._get_node_children(node)
+
+            for child in children:
+                stack.append(child)
+        return subtrees
 
     # Gets all subtrees with node parameter as root
     def _extract_subtrees(self, root):
@@ -172,7 +202,7 @@ class ASTSerializer:
         return subtrees
 
 
-def _get_fisrt_and_last_tokens(node):
+def _get_first_and_last_tokens(node):
     tokens_iterator = node.get_tokens()
     first_token = next(tokens_iterator, None)
     last_token = first_token  # Initialize last_token in case there's only one
