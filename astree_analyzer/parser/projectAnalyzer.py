@@ -19,30 +19,30 @@ def _convert_time(timestamp):
     return  date_time.strftime('%Y-%m-%d %H:%M:%S')
 
 
-def process_directory(intput_dir, output, include_human_readable=False):
+def process_directory(input_dir, output, include_human_readable=False):
     # Start timing
     start_time = time.time()
     print("Start:", _convert_time(start_time))
 
-    temp_dir = tempfile.TemporaryDirectory()
-    temp_file = Path(temp_dir.name, "temp_results.csv")
-    print(f"Writing temp to {temp_file}")
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_file = Path(temp_dir) / "temp_results.csv"
+        print(f"Writing temp to {temp_file}")
 
-    queue = Queue()
-    # Start the subtree generator process
-    filepaths = list(intput_dir.rglob('*.c'))
-    producer = Process(target=_generate_subtrees, args=(filepaths, queue))
-    # Start the writer process
-    consumer = Process(target=_write_to_temp, args=(temp_file, queue))
+        queue = Queue()
+        # Start the subtree generator process
+        filepaths = list(input_dir.rglob('*.c'))
+        producer = Process(target=_generate_subtrees, args=(filepaths, queue))
+        # Start the writer process
+        consumer = Process(target=_write_to_temp, args=(temp_file, queue))
 
-    producer.start()
-    consumer.start()
+        producer.start()
+        consumer.start()
 
-    producer.join()
-    consumer.join()
+        producer.join()
+        queue.put(None)  # Signal the consumer to stop after the producer is done
+        consumer.join()
 
-    _write_to_final_output(temp_file, output)
-    temp_dir.cleanup()
+        _write_to_final_output(temp_file, output)
 
     end_time = time.time()
     print("End:", _convert_time(end_time))
@@ -95,7 +95,6 @@ def _generate_subtrees(
     filepaths,
     queue
 ):
-
     for filepath in tqdm(filepaths, desc="Processing files"):
         filepath = Path(filepath)
         serializer = ASTSerializer()
@@ -110,8 +109,6 @@ def _generate_subtrees(
 
 
 def _write_to_temp(temp_file: Path, queue):
-    # Append results to the temporary CSV file
-
     while True:
         subtrees = queue.get()
         if subtrees is None:
@@ -152,12 +149,11 @@ def _write_to_final_output(temp_file, output):
         for subtree_with_count in subtrees_with_count.values():
             writer.writerow(subtree_with_count)
 
-    print(f"Reuslts saved to {output.absolute().resolve()}")
+    print(f"Results saved to {output.absolute().resolve()}")
 
 
 def _write_subtrees(output: Path, subtrees: list, include_human_readable: Optional[bool]=False):
     try:
-
         if not output.parent.is_dir():
             output.mkdir(parents=True)
 
@@ -175,7 +171,6 @@ def _write_subtrees(output: Path, subtrees: list, include_human_readable: Option
             fieldnames = ["Hash", "Count", "Human Readable Expression", "Serialized Subtree", "Deserialized Tree"]
         else:
             fieldnames = ["Hash", "Count", "Serialized Subtree"]
-
 
         with open(output, "w", newline="") as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
@@ -200,13 +195,12 @@ def _write_subtrees(output: Path, subtrees: list, include_human_readable: Option
                         "Serialized Subtree": subtree,
                     })
 
-        print(f"Reuslts saved to {output.absolute().resolve()}")
+        print(f"Results saved to {output.absolute().resolve()}")
     except Exception as e:
         print(f"An error occurred: {e}")
         temp_file = 'subtrees_temp.pkl'
         with open(temp_file, 'wb') as f:
             pickle.dump(subtrees, f)
-
 
 
 def __main__():
@@ -221,6 +215,9 @@ def __main__():
                 all_subtrees = pickle.load(f)
 
     if all_subtrees:
-        _write_subtrees(output, all_subtrees, True)
+        _write_subtrees(Path(output), all_subtrees, True)
     else:
-        process_directory(Path(directory), output,)
+        process_directory(Path(directory), Path(output))
+
+if __name__ == "__main__":
+    __main__()
