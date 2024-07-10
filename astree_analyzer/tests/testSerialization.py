@@ -1,11 +1,5 @@
 import unittest
 import clang.cindex
-
-import sys
-import os
-# Add the parent directory to the sys.path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
 from parser.parse import *
 from unittest.mock import MagicMock
 
