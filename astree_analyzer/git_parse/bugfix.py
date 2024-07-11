@@ -45,7 +45,10 @@ def get_code_from_extent(code, extent):
     code_lines.append(lines[start.line - 1][start.column - 1:])
     for line in range(start.line, end.line - 1):
         code_lines.append(lines[line])
-    code_lines.append(lines[end.line - 1][:end.column - 1])
+    try:
+        code_lines.append(lines[end.line - 1][:end.column - 1])
+    except:
+        pass
     return code_lines
 
 def normalize_code(text):
@@ -68,26 +71,27 @@ def contains_expression(node_text, expression):
     normalized_expression = normalize_code(expression)
     return normalized_expression in normalized_node_text
 
-def find_smallest_containing_node(node, expression, best_match=None):
+def find_smallest_containing_node(node, expression, line_number, best_match=None):
     """
     Recursively find the smallest node that contains the given expression.
     """
     node_text = ' '.join([token.spelling for token in node.get_tokens()])
     if contains_expression(node_text, expression):
         # Update best match if this node is smaller
-        if best_match is None or (len(normalize_code(node_text)) < len(normalize_code(' '.join([token.spelling for token in best_match.get_tokens()])))):
-            best_match = node
+        if node.extent.start.line is not None and node.extent.end.line is not None and  node.extent.start.line <= line_number <= node.extent.end.line:
+            if best_match is None or (len(normalize_code(node_text)) < len(normalize_code(' '.join([token.spelling for token in best_match.get_tokens()])))):
+                best_match = node
         # Continue searching in children to find a smaller node
         for child in node.get_children():
-            best_match = find_smallest_containing_node(child, expression, best_match)
+            best_match = find_smallest_containing_node(child, expression, line_number, best_match)
     return best_match
 
-def get_function_or_statement_context(code, source_code):
+def get_function_or_statement_context(code, source_code, line_number):
     index = clang.cindex.Index.create()
     tu = index.parse('temp.c', args=['-std=c99'], unsaved_files=[('temp.c', code)])
 
     root_node = tu.cursor
-    node = find_smallest_containing_node(root_node, source_code)
+    node = find_smallest_containing_node(root_node, source_code, line_number)
     # node = find_node(root_node, line_number)
     if node is not None: # and line number...
         return get_code_from_extent(code, node.extent)
@@ -102,7 +106,7 @@ def extract_removed_code(commit):
             removed = modified_file.diff_parsed['deleted']
             removed_line_data = {}
             for line_number, code in removed:
-                context = get_function_or_statement_context(full_code, code)
+                context = get_function_or_statement_context(full_code, code, line_number)
                 removed_line_data[line_number] = {
                     "context": context,
                     "code": code
