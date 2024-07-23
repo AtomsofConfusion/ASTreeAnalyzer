@@ -1,25 +1,32 @@
+import csv
+import json
+import platform
+import clang.cindex
+import pygit2
+import re
+from pydriller import Repository
+from pathlib import Path
+import shutil
+import pandas as pd
+from parse import *
 from multiprocessing import Process, Queue
 import pstats
 import datetime
 import tempfile
 from typing import Optional
-from parser.parse import *
 import os
 import time
 import pickle
 import cProfile
-from pathlib import Path
 from tqdm import tqdm
-
 
 profiler = cProfile.Profile()
 
 def _convert_time(timestamp):
     date_time = datetime.datetime.fromtimestamp(timestamp)  # Convert to a datetime object
-    return  date_time.strftime('%Y-%m-%d %H:%M:%S')
+    return date_time.strftime('%Y-%m-%d %H:%M:%S')
 
-
-def process_directory(input_dir, output, include_human_readable=False):
+def process_directory(input_dir, output, include_human_readable=False, is_comment=False):
     # Start timing
     start_time = time.time()
     print("Start:", _convert_time(start_time))
@@ -50,7 +57,6 @@ def process_directory(input_dir, output, include_human_readable=False):
     # Print the elapsed time
     elapsed_time = end_time - start_time
     print(f"Time elapsed: {elapsed_time:.2f} seconds")
-
 
 def process_file(
     filepath: Path,
@@ -90,11 +96,7 @@ def process_file(
         print(f"Error processing {filename}: {e}")
         raise
 
-
-def _generate_subtrees(
-    filepaths,
-    queue
-):
+def _generate_subtrees(filepaths, queue):
     for filepath in tqdm(filepaths, desc="Processing files"):
         filepath = Path(filepath)
         serializer = ASTSerializer()
@@ -106,7 +108,6 @@ def _generate_subtrees(
             print(f"Error processing {filename}: {e}")
             raise
     queue.put(None)
-
 
 def _write_to_temp(temp_file: Path, queue):
     while True:
@@ -122,7 +123,6 @@ def _write_to_temp(temp_file: Path, queue):
         with temp_file.open("a", newline="") as file:
             writer = csv.writer(file)
             writer.writerows(rows)
-
 
 def _write_to_final_output(temp_file, output):
     subtrees_with_count = {}
@@ -150,7 +150,6 @@ def _write_to_final_output(temp_file, output):
             writer.writerow(subtree_with_count)
 
     print(f"Results saved to {output.absolute().resolve()}")
-
 
 def _write_subtrees(output: Path, subtrees: list, include_human_readable: Optional[bool]=False):
     try:
@@ -202,22 +201,40 @@ def _write_subtrees(output: Path, subtrees: list, include_human_readable: Option
         with open(temp_file, 'wb') as f:
             pickle.dump(subtrees, f)
 
+def __main__(process_commits=True, process_comments=True):
+    commits_directory = "../git_parse/context_files/commits"
+    comments_directory = "../git_parse/context_files/comments"
+    output_commits = "../../output/subtreesGitCommits.csv"
+    output_comments = "../../output/subtreesGitComments.csv"
 
-def __main__():
-    directory = "./git"
-    output = "../../output/subtreesGit.csv"
     # Load any existing subtrees if available
-
     temp_file = 'subtrees_temp.pkl'
     all_subtrees = []
     if os.path.exists(temp_file):
         with open(temp_file, 'rb') as f:
-                all_subtrees = pickle.load(f)
+            all_subtrees = pickle.load(f)
 
     if all_subtrees:
-        _write_subtrees(Path(output), all_subtrees, True)
+        _write_subtrees(Path(output_commits), all_subtrees, True)
     else:
-        process_directory(Path(directory), Path(output))
+        if process_commits:
+            process_directory(Path(commits_directory), Path(output_commits))
+        if process_comments:
+            process_directory(Path(comments_directory), Path(output_comments), is_comment=True)
+
+    # Merge comments table with commits table on the subtree hash value and serialized subtree
+    if process_commits and process_comments:
+        commits_df = pd.read_csv(output_commits)
+        comments_df = pd.read_csv(output_comments)
+
+        merged_df = pd.merge(commits_df, comments_df, on=['Hash', 'Serialized Subtree'], how='outer', suffixes=('_commit', '_comment'))
+
+        # Reorder the columns
+        merged_df = merged_df[['Hash', 'Count_commit', 'Count_comment', 'Serialized Subtree']]
+        merged_df.rename(columns={'Count_commit': 'CountCommit', 'Count_comment': 'CountComment'}, inplace=True)
+
+        merged_output_path = '../../output/merged_subtreesGit.csv'
+        merged_df.to_csv(merged_output_path, index=False)
 
 if __name__ == "__main__":
-    __main__()
+    __main__(process_commits=True, process_comments=True)

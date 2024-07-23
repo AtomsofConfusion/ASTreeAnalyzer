@@ -7,7 +7,7 @@ from pydriller import Repository
 from pathlib import Path
 
 # Path to your local Git repository
-repo_path = 'D:/atoms/projects/git'
+repo_path = '/Users/anuraagpandhi/VSCode/GitSourceCode/git'
 repo = pygit2.Repository(repo_path)
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -92,9 +92,20 @@ def get_function_or_statement_context(code, source_code, line_number):
 
     root_node = tu.cursor
     node = find_smallest_containing_node(root_node, source_code, line_number)
-    # node = find_node(root_node, line_number)
-    if node is not None: # and line number...
-        return get_code_from_extent(code, node.extent)
+    
+    if node is not None:
+        # Ensure we capture broader context by moving up the AST if needed
+        parent_node = node
+        while parent_node.kind not in {clang.cindex.CursorKind.FUNCTION_DECL,
+                                       clang.cindex.CursorKind.CXX_METHOD,
+                                       clang.cindex.CursorKind.STRUCT_DECL,
+                                       clang.cindex.CursorKind.CLASS_DECL}:
+            if parent_node.semantic_parent:
+                parent_node = parent_node.semantic_parent
+            else:
+                break
+        
+        return get_code_from_extent(code, parent_node.extent)
     return None
 
 def extract_removed_code(commit):
