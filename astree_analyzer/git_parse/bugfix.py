@@ -5,9 +5,10 @@ import pygit2
 import re
 from pydriller import Repository
 from pathlib import Path
+from clang.cindex import CursorKind
 
 # Path to your local Git repository
-repo_path = '/Users/anuraagpandhi/VSCode/GitSourceCode/git'
+repo_path = 'D:/atoms/projects/git'
 repo = pygit2.Repository(repo_path)
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -56,68 +57,105 @@ def normalize_code(text):
     Normalize code by removing extra spaces around punctuation and making it lowercase.
     This function also standardizes common variations in array declarations.
     """
-    text = re.sub(r'\s+', ' ', text)  # Replace multiple spaces with one
-    text = re.sub(r'\s*\[\s*', '[', text)  # Remove spaces around [
-    text = re.sub(r'\s*\]\s*', ']', text)  # Remove spaces around ]
-    text = re.sub(r'\s*\(\s*', '(', text)  # remove spaces around parentheses
-    text = re.sub(r'\s*\)\s*', ')', text)  # remove spaces around parentheses
-    return text.strip().lower()
+    # text = text.replace('\t', ' ').replace('\n', ' ')
+    # text = re.sub(r'\s+', ' ', text)  # Replace multiple spaces with one
+    # text = re.sub(r'\s*\[\s*', '[', text)  # Remove spaces around [
+    # text = re.sub(r'\s*\]\s*', ']', text)  # Remove spaces around ]
+    # text = re.sub(r'\s*\(\s*', '(', text)  # remove spaces around parentheses
+    # text = re.sub(r'\s*\)\s*', ')', text)  # remove spaces around parentheses
+    # text = re.sub(r'\s*\)\s*', '*', text)  # remove spaces around *
+    return text.replace(" ", "")
 
-def contains_expression(node_text, expression):
+def contains_expression(node, expression, line_number):
     """
     Check if the normalized node text contains the normalized expression.
     """
+    if line_number < node.extent.start.line or line_number > node.extent.end.line:
+        return False
+    node_text = ' '.join([token.spelling for token in node.get_tokens()])
+    if expression.endswith(";"):
+        expression = expression[:-1]
     normalized_node_text = normalize_code(node_text)
     normalized_expression = normalize_code(expression)
     return normalized_expression in normalized_node_text
 
-def find_smallest_containing_node(node, expression, line_number, best_match=None):
+def find_smallest_containing_node(node, expression, line_number, ancestors, best_match=None):
     """
     Recursively find the smallest node that contains the given expression.
     """
-    node_text = ' '.join([token.spelling for token in node.get_tokens()])
-    if contains_expression(node_text, expression):
-        # Update best match if this node is smaller
-        if node.extent.start.line is not None and node.extent.end.line is not None and  node.extent.start.line <= line_number <= node.extent.end.line:
-            if best_match is None or (len(normalize_code(node_text)) < len(normalize_code(' '.join([token.spelling for token in best_match.get_tokens()])))):
-                best_match = node
-        # Continue searching in children to find a smaller node
+    if contains_expression(node, expression, line_number):
+        ancestors.append(node)
+        best_match = node
+        node_text = ' '.join([token.spelling for token in node.get_tokens()])
         for child in node.get_children():
-            best_match = find_smallest_containing_node(child, expression, line_number, best_match)
+            best_match = find_smallest_containing_node(child, expression, line_number, ancestors, best_match)
     return best_match
 
-def get_function_or_statement_context(code, source_code, line_number):
-    index = clang.cindex.Index.create()
-    tu = index.parse('temp.c', args=['-std=c99'], unsaved_files=[('temp.c', code)])
 
+def extract_headers(code):
+    header_pattern = re.compile(r'#include\s+"([^"]+)"')
+    headers = header_pattern.findall(code)
+    return headers
+
+
+def get_function_or_statement_context(code, source_code, line_number, files_headers):
+    index = clang.cindex.Index.create()
+    include_paths = [
+        'C:/Program Files (x86)/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.40.33807/include',
+        'C:/Program Files (x86)/Windows Kits/10/Include/10.0.22000.0/ucrt',
+        'C:/Program Files (x86)/Windows Kits/10/Include/10.0.22000.0/shared'
+    ]
+
+
+    args = ['-std=c99'] + [f'-I{path}' for path in include_paths]
+    unsaved_files = [
+        (header_name, header_code) for header_name, header_code in files_headers.items()
+    ]
+    unsaved_files.append(('temp.c', code))
+    tu = index.parse('temp.c', args=args, unsaved_files=unsaved_files)
     root_node = tu.cursor
-    node = find_smallest_containing_node(root_node, source_code, line_number)
-    
+    ancestors = []
+    node = find_smallest_containing_node(root_node, source_code, line_number, ancestors)
+
+    # if node is not None:
+    #     ancestors.reverse()
+    #     # Ensure we capture broader context by moving up the AST if needed
+    #     for parent_node in ancestors:
+    #         if parent_node.kind in (clang.cindex.CursorKind.FUNCTION_DECL,
+    #                                    clang.cindex.CursorKind.CXX_METHOD,
+    #                                    clang.cindex.CursorKind.STRUCT_DECL,
+    #                                    clang.cindex.CursorKind.CLASS_DECL):
+    #             node = parent_node
+    #             break
     if node is not None:
-        # Ensure we capture broader context by moving up the AST if needed
-        parent_node = node
-        while parent_node.kind not in {clang.cindex.CursorKind.FUNCTION_DECL,
-                                       clang.cindex.CursorKind.CXX_METHOD,
-                                       clang.cindex.CursorKind.STRUCT_DECL,
-                                       clang.cindex.CursorKind.CLASS_DECL}:
-            if parent_node.semantic_parent:
-                parent_node = parent_node.semantic_parent
-            else:
-                break
-        
-        return get_code_from_extent(code, parent_node.extent)
+        return get_code_from_extent(code, node.extent)
     return None
 
 def extract_removed_code(commit):
     removed_code = []
     previous_commit = get_previous_commit(commit.hash)
+    loaded_headers = {}
     for modified_file in commit.modified_files:
+        file_path = Path(modified_file.new_path)
+        if file_path.suffix not in (".h", ".c"):
+            continue
         if modified_file.diff_parsed:
+            files_headers = {}
             full_code = get_file_content_at_commit(previous_commit, modified_file.new_path)
+            headers = extract_headers(full_code)
+            for header in headers:
+                if header not in loaded_headers:
+                    header_content = get_file_content_at_commit(previous_commit, header)
+                    loaded_headers[header] = header_content
+                files_headers[header] = loaded_headers[header]
+
             removed = modified_file.diff_parsed['deleted']
             removed_line_data = {}
             for line_number, code in removed:
-                context = get_function_or_statement_context(full_code, code, line_number)
+                code = code.strip()
+                if code == "":
+                    continue
+                context = get_function_or_statement_context(full_code, code, line_number, files_headers)
                 removed_line_data[line_number] = {
                     "context": context,
                     "code": code
