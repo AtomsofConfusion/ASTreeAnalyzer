@@ -8,8 +8,7 @@ from pathlib import Path
 from clang.cindex import CursorKind
 
 # Path to your local Git repository
-repo_path = 'D:/atoms/projects/git'
-repo = pygit2.Repository(repo_path)
+
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 if platform.system() ==  "Windows":
@@ -20,15 +19,16 @@ else:
 clang.cindex.Config.set_library_file(library_file)
 
 def is_fix_commit(commit):
+    # TODO - this is far to simple, we need to analyze the issues and PRs
     return commit.msg.lower().startswith('fix')
 
-def get_file_content_at_commit(commit_hash, file_path):
+def get_file_content_at_commit(repo, commit_hash, file_path):
     commit = repo.get(commit_hash)
     tree = commit.tree
     blob = tree[file_path].data
     return blob.decode('utf-8')
 
-def get_previous_commit(commit):
+def get_previous_commit(repo, commit):
     walker = repo.walk(commit, pygit2.GIT_SORT_TOPOLOGICAL | pygit2.GIT_SORT_TIME)
     next(walker)
     parent_commit = next(walker)
@@ -131,9 +131,9 @@ def get_function_or_statement_context(code, source_code, line_number, files_head
         return get_code_from_extent(code, node.extent)
     return None
 
-def extract_removed_code(commit):
+def extract_removed_code(repo, commit):
     removed_code = []
-    previous_commit = get_previous_commit(commit.hash)
+    previous_commit = get_previous_commit(repo, commit.hash)
     loaded_headers = {}
     for modified_file in commit.modified_files:
         file_path = Path(modified_file.new_path)
@@ -141,13 +141,22 @@ def extract_removed_code(commit):
             continue
         if modified_file.diff_parsed:
             files_headers = {}
-            full_code = get_file_content_at_commit(previous_commit, modified_file.new_path)
+            try:
+                full_code = get_file_content_at_commit(repo, previous_commit, modified_file.new_path)
+            except Exception:
+                print(f"Could not load {modified_file.new_path} at {previous_commit}")
+                continue
             headers = extract_headers(full_code)
-            for header in headers:
-                if header not in loaded_headers:
-                    header_content = get_file_content_at_commit(previous_commit, header)
-                    loaded_headers[header] = header_content
-                files_headers[header] = loaded_headers[header]
+            try:
+                for header in headers:
+                    if header not in loaded_headers:
+                        header_content = get_file_content_at_commit(repo, previous_commit, header)
+                        loaded_headers[header] = header_content
+                    files_headers[header] = loaded_headers[header]
+            except Exception:
+                print(f"Could not load {header} at {previous_commit}")
+                continue
+
 
             removed = modified_file.diff_parsed['deleted']
             removed_line_data = {}
@@ -167,17 +176,21 @@ def extract_removed_code(commit):
                 })
     return removed_code
 
-fix_commits_data = {}
 
-# Mining the local repository
-count = 0
-for commit in Repository(repo_path).traverse_commits():
-    if count == 20:
-        break
-    if is_fix_commit(commit):
-        count += 1
-        removed_code = extract_removed_code(commit)
-        if removed_code:
-            fix_commits_data[commit.hash] = removed_code
 
-Path("../../output/commits.json").write_text(json.dumps(fix_commits_data, indent=4))
+def dump_bugfix_data(project_dir, output_file):
+
+    repo = pygit2.Repository(project_dir)
+    fix_commits_data = {}
+
+    # Mining the local repository
+    count = 0
+    for commit in Repository(project_dir).traverse_commits():
+        if count == 20:
+            break
+        if is_fix_commit(commit):
+            count += 1
+            removed_code = extract_removed_code(repo, commit)
+            if removed_code:
+                fix_commits_data[commit.hash] = removed_code
+    Path(output_file).write_text(json.dumps(fix_commits_data, indent=4))

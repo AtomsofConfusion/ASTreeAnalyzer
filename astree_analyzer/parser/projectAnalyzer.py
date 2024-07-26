@@ -1,14 +1,7 @@
 import csv
-import json
-import platform
-import clang.cindex
-import pygit2
-import re
 from pydriller import Repository
 from pathlib import Path
-import shutil
 import pandas as pd
-from parse import *
 from multiprocessing import Process, Queue
 import pstats
 import datetime

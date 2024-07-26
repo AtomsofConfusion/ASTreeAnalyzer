@@ -7,6 +7,7 @@ import multiprocessing
 # Add the parent directory to the sys.path
 #sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+from git_parse.bugfix import dump_bugfix_data
 from parser.projectAnalyzer import process_file, process_directory
 
 
@@ -45,3 +46,19 @@ if __name__ == '__main__':
     # Set the multiprocessing start method to 'fork'
     multiprocessing.set_start_method('fork')
     ast()
+
+@ast.command()
+@click.argument("project_dir", type=click.Path(exists=True))
+@click.argument("output_file", type=click.Path())
+def dump_bugfix_commits(project_dir, output_file):
+    """Analyze the given INPUT_DIR."""
+    dump_bugfix_data(
+        project_dir,
+        output_file,
+    )
+
+if __name__ == '__main__':
+    # Set the multiprocessing start method to 'fork'
+    multiprocessing.set_start_method('fork')
+    ast()
+
