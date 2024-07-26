@@ -1,6 +1,7 @@
 import json
 import platform
 import tempfile
+from git_parse.exceptions import TextInCommentError
 import clang.cindex
 import pygit2
 import re
@@ -67,6 +68,17 @@ def normalize_code(text):
     # text = re.sub(r'\s*\)\s*', '*', text)  # remove spaces around *
     return text.replace(" ", "")
 
+def is_text_in_comment(node, search_text, line_number=0):
+    search_text = normalize_code(search_text)
+    for token in node.get_tokens():
+        if token.kind == clang.cindex.TokenKind.COMMENT:
+            # Normalize spaces and check if the search text is in the comment
+            normalized_comment = normalize_code(token.spelling)
+            if search_text in normalized_comment:
+                print(f"{search_text} is a comment")
+                return True
+    return False
+
 def contains_expression(node, expression, line_number):
     """
     Check if the normalized node text contains the normalized expression.
@@ -110,9 +122,13 @@ def get_function_or_statement_context(file_path, code, source_code, line_number)
     args = ['-std=c99'] + [f'-I{path}' for path in include_paths]
 
     tu = index.parse(str(file_path), args=args)
+
+
     root_node = tu.cursor
     ancestors = []
     try:
+        if is_text_in_comment(root_node, source_code):
+            raise TextInCommentError("modified text is a comment")
         node = find_smallest_containing_node(root_node, source_code, line_number, ancestors)
     except UnicodeDecodeError:
         print(f"Could not parse {file_path}. Skipping")
@@ -167,7 +183,10 @@ def extract_removed_code(repo, commit):
                     code = code.strip()
                     if code == "":
                         continue
-                    context = get_function_or_statement_context(file_path, full_code, code, line_number)
+                    try:
+                        context = get_function_or_statement_context(file_path, full_code, code, line_number)
+                    except TextInCommentError:
+                        continue
                     removed_line_data[line_number] = {
                         "context": context,
                         "code": code
