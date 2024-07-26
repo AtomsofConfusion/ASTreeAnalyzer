@@ -77,6 +77,7 @@ class ASTSerializer:
             node_data["children"] = children
         return children
 
+<<<<<<< Updated upstream
     def _serialize_node(self, node):
         node_data = self._get_node_cache(node)
         node_kind = node_data.get("kind")
@@ -99,16 +100,26 @@ class ASTSerializer:
             if node_spelling is None:
                 node_spelling = node.spelling
                 node_data["spelling"] = node_spelling
+=======
 
-            anon_name = self.anon_map.get(node_spelling)
-            node_type_spelling = node.type.spelling
+    def _serialize_node(self, root):
+>>>>>>> Stashed changes
 
-            if anon_name is None:
-                anon_name = f"var_{len(self.anon_map)}"
-                self.anon_map[node_spelling] = anon_name
+        stack = []
+        stack.append((root, False))
+        results = {}
+        ret = None
 
-            node_rep = f"{anon_name}_{node_type_spelling}"
+        while stack:
+            node, processed = stack.pop()
+            node_data = self._get_node_cache(node)
 
+            if processed:
+                # Gather serialized children from results dictionary
+                children = self._get_node_children(node)
+                node_kind = node_data.get("kind")
+
+<<<<<<< Updated upstream
             index = node_type_spelling.find('[')
             if index != -1:
                 base_type = node_type_spelling[:index]
@@ -146,25 +157,105 @@ class ASTSerializer:
                         node_rep = f"{node_rep}_{operator}"
                 elif node_kind == clang.cindex.CursorKind.CALL_EXPR:
                     node_rep = f"{node_rep}_{node.displayname}"
+=======
+                children_rep = [results[child.hash] for child in children if child.hash in results]
 
-                node_data["node_rep"] = node_rep
+                if node_kind == clang.cindex.CursorKind.ARRAY_SUBSCRIPT_EXPR:
+                    old_node_rep  = f"{children_rep[0]}[{children_rep[1]}]"
+                else:
+                    old_node_rep = results[node.hash]
+
+                node_rep = f"{old_node_rep}({','.join(children_rep)})"
+>>>>>>> Stashed changes
+
+                results[node.hash] = node_rep
+                if node.hash == root.hash:
+                    ret = node_rep  # This is the final result for the root node
             else:
+<<<<<<< Updated upstream
                 node_rep = cached_node_rep
+=======
+                node_kind = node_data.get("kind")
+                if node_kind is None:
+                    node_kind = node.kind
+                    node_data["kind"] = node_kind
 
-        if node_kind == clang.cindex.CursorKind.ARRAY_SUBSCRIPT_EXPR:
-            children_iterator = node.get_children()
-            first_child = next(children_iterator, None)
-            second_child = next(children_iterator, None)
+                if node_kind in IDENTIFIER_KINDS:
+                    node_spelling = node_data.get("spelling")
+                    if node_spelling is None:
+                        node_spelling = node.spelling
+                        node_data["spelling"] = node_spelling
 
-            array_base = self._serialize_node(first_child)
-            subscript = self._serialize_node(second_child)
-            node_rep = f"{array_base}[{subscript}]"
-            children_rep = []
-        else:
-            children = self._get_node_children(node)
-            children_rep = [self._serialize_node(child) for child in children]
+                    anon_name = self.anon_map.get(node_spelling)
+                    node_type_spelling = node.type.spelling
 
-        return f"{node_rep}({','.join(children_rep)})" if children_rep else node_rep
+                    if anon_name is None:
+                        anon_name = f"var_{len(self.anon_map)}"
+                        self.anon_map[node_spelling] = anon_name
+
+                    node_rep = f"{anon_name}_{node_type_spelling}"
+
+                    index = node_type_spelling.find('[')
+                    if index != -1:
+                        base_type = node_type_spelling[:index]
+                        subscript = node_type_spelling[index+1:]
+                        # base_type, subscript = node_type_spelling.split('[', 1)
+                        subscript = 0  # interpret as an integer literal for anonymization
+                        node_rep = f"{anon_name}_{base_type}[{subscript}]"
+                else:
+                    # if the representation does not depend on the anonimization data
+                    # it can be cached/read from cache
+                    cahced_node_rep = node_data.get("node_rep")
+
+                    if cahced_node_rep is None:
+                        node_rep = self.primitive_replacements.get(node_kind)
+                        if node_rep is None:
+                            node_rep = str(node_kind)
+
+                        if node_kind == clang.cindex.CursorKind.BINARY_OPERATOR:
+                            operator = None
+                            for token in node.get_tokens():
+                                token_spelling = token.spelling
+                                if token_spelling in BINARY_OPERATORS:
+                                    operator = token_spelling
+                                    break
+                            if operator:
+                                node_rep = f"{node_rep}_{operator}"
+                        elif node_kind == clang.cindex.CursorKind.UNARY_OPERATOR:
+                            first_token, last_token = _get_fisrt_and_last_tokens(node)
+                            if first_token:
+                                first_token_spelling = first_token.spelling
+                                last_token_spelling = last_token.spelling
+                                if first_token_spelling in UNARY_OPERATORS:
+                                    operator = first_token_spelling + '_pre'
+                                elif last_token_spelling in UNARY_OPERATORS:
+                                    operator = last_token_spelling + '_post'
+                                else:
+                                    operator = first_token_spelling
+                                node_rep = f"{node_rep}_{operator}"
+                        elif node_kind == clang.cindex.CursorKind.CALL_EXPR:
+                            node_rep = f"{node_rep}_{node.displayname}"
+
+                        node_data["node_rep"] = node_rep
+                    else:
+                        node_rep = cahced_node_rep
+
+>>>>>>> Stashed changes
+
+                if node_kind == clang.cindex.CursorKind.ARRAY_SUBSCRIPT_EXPR:
+                    children = self._get_node_children(node)
+                    stack.append((node, True))
+                    stack.append((children[0], False))
+                    stack.append((children[1], False))
+                else:
+                    results[node.hash] = node_rep
+                    children = self._get_node_children(node)
+                    if children:
+                        stack.append((node, True))
+                        for child in children:
+                            stack.append((child, False))
+
+        return ret
 
     def _extract_subtrees(self, root):
         subtrees = []

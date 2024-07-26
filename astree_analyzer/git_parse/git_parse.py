@@ -1,5 +1,6 @@
 import json
 import platform
+import tempfile
 import clang.cindex
 import pygit2
 import re
@@ -86,7 +87,6 @@ def find_smallest_containing_node(node, expression, line_number, ancestors, best
     if contains_expression(node, expression, line_number):
         ancestors.append(node)
         best_match = node
-        node_text = ' '.join([token.spelling for token in node.get_tokens()])
         for child in node.get_children():
             best_match = find_smallest_containing_node(child, expression, line_number, ancestors, best_match)
     return best_match
@@ -98,7 +98,7 @@ def extract_headers(code):
     return headers
 
 
-def get_function_or_statement_context(code, source_code, line_number, files_headers):
+def get_function_or_statement_context(file_path, code, source_code, line_number):
     index = clang.cindex.Index.create()
     include_paths = [
         'C:/Program Files (x86)/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.40.33807/include',
@@ -108,14 +108,15 @@ def get_function_or_statement_context(code, source_code, line_number, files_head
 
 
     args = ['-std=c99'] + [f'-I{path}' for path in include_paths]
-    unsaved_files = [
-        (header_name, header_code) for header_name, header_code in files_headers.items()
-    ]
-    unsaved_files.append(('temp.c', code))
-    tu = index.parse('temp.c', args=args, unsaved_files=unsaved_files)
+
+    tu = index.parse(str(file_path), args=args)
     root_node = tu.cursor
     ancestors = []
-    node = find_smallest_containing_node(root_node, source_code, line_number, ancestors)
+    try:
+        node = find_smallest_containing_node(root_node, source_code, line_number, ancestors)
+    except UnicodeDecodeError:
+        print(f"Could not parse {file_path}. Skipping")
+        return None
 
     # if node is not None:
     #     ancestors.reverse()
@@ -134,51 +135,52 @@ def get_function_or_statement_context(code, source_code, line_number, files_head
 def extract_removed_code(repo, commit):
     removed_code = []
     previous_commit = get_previous_commit(repo, commit.hash)
-    loaded_headers = {}
-    for modified_file in commit.modified_files:
-        file_path = Path(modified_file.new_path)
-        if file_path.suffix not in (".h", ".c"):
-            continue
-        if modified_file.diff_parsed:
-            files_headers = {}
-            try:
-                full_code = get_file_content_at_commit(repo, previous_commit, modified_file.new_path)
-            except Exception:
-                print(f"Could not load {modified_file.new_path} at {previous_commit}")
+    with tempfile.TemporaryDirectory() as temp_dir:
+        for modified_file in commit.modified_files:
+            if modified_file.new_path is None:
                 continue
-            headers = extract_headers(full_code)
-            try:
-                for header in headers:
-                    if header not in loaded_headers:
-                        header_content = get_file_content_at_commit(repo, previous_commit, header)
-                        loaded_headers[header] = header_content
-                    files_headers[header] = loaded_headers[header]
-            except Exception:
-                print(f"Could not load {header} at {previous_commit}")
+            file_path = Path(modified_file.new_path)
+            if file_path.suffix not in (".h", ".c"):
                 continue
-
-
-            removed = modified_file.diff_parsed['deleted']
-            removed_line_data = {}
-            for line_number, code in removed:
-                code = code.strip()
-                if code == "":
+            if modified_file.diff_parsed:
+                try:
+                    full_code = get_file_content_at_commit(repo, previous_commit, modified_file.new_path)
+                    file_path = Path(temp_dir, file_path)
+                    file_path.write_text(full_code)
+                except Exception:
+                    print(f"Could not load {modified_file.new_path} at {previous_commit}. Skipping")
                     continue
-                context = get_function_or_statement_context(full_code, code, line_number, files_headers)
-                removed_line_data[line_number] = {
-                    "context": context,
-                    "code": code
-                }
+                headers = extract_headers(full_code)
+                try:
+                    for header in headers:
+                        if not Path(temp_dir, header).is_file():
+                            header_content = get_file_content_at_commit(repo, previous_commit, header)
+                            Path(temp_dir, header).write_text(header_content)
+                except Exception:
+                    print(f"Could not load {header} at {previous_commit}. Skipping")
+                    continue
 
-            removed_code.append({
-                "file": modified_file.new_path,
-                "removed": removed_line_data,
-                })
+
+                removed = modified_file.diff_parsed['deleted']
+                removed_line_data = {}
+                for line_number, code in removed:
+                    code = code.strip()
+                    if code == "":
+                        continue
+                    context = get_function_or_statement_context(file_path, full_code, code, line_number)
+                    removed_line_data[line_number] = {
+                        "context": context,
+                        "code": code
+                    }
+
+                removed_code.append({
+                    "file": modified_file.new_path,
+                    "removed": removed_line_data,
+                    })
     return removed_code
 
 
-
-def dump_bugfix_data(project_dir, output_file):
+def dump_bugfix_data(project_dir, output_file, num_of_commits=None):
 
     repo = pygit2.Repository(project_dir)
     fix_commits_data = {}
@@ -186,7 +188,7 @@ def dump_bugfix_data(project_dir, output_file):
     # Mining the local repository
     count = 0
     for commit in Repository(project_dir).traverse_commits():
-        if count == 20:
+        if num_of_commits is not None and count == num_of_commits:
             break
         if is_fix_commit(commit):
             count += 1

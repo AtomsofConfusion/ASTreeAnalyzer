@@ -42,7 +42,9 @@ def process_directory(input_dir, output, include_human_readable=False, is_commen
         queue.put(None)  # Signal the consumer to stop after the producer is done
         consumer.join()
 
-        _write_to_final_output(temp_file, output)
+
+    _write_to_final_output(temp_file, output)
+    temp_dir.cleanup()
 
     end_time = time.time()
     print("End:", _convert_time(end_time))
