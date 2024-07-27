@@ -117,10 +117,36 @@ def find_smallest_containing_node(
     return best_match
 
 
-def extract_headers(code):
+def extract_headers(code, repo, commit, processed=None):
+    """
+    Recursively extract all unique header file names from the C code.
+
+    :param code: C code from which to extract header files.
+    :param base_path: The base directory where header files are searched (as a Path object).
+    :param processed: A set to keep track of processed header files to avoid cyclic includes.
+    :return: A set of all header files included in the code, directly or indirectly.
+    """
+    if processed is None:
+        processed = set()
+
     header_pattern = re.compile(r'#include\s+"([^"]+)"')
-    headers = header_pattern.findall(code)
-    return headers
+    headers = set(header_pattern.findall(code))
+    all_headers = set(headers)
+
+    for header in headers:
+        if header not in processed:
+            processed.add(header)
+            try:
+                file_content = get_file_content_at_commit(
+                    repo, commit, header
+                )
+            except Exception:
+                print(f"Cannot load {header} at {commit}")
+                continue
+            included_headers = extract_headers(file_content, repo, commit, processed)
+            all_headers.update(included_headers)
+    print(all_headers)
+    return all_headers
 
 
 def get_function_or_statement_context(file_path, code, source_code, line_number):
@@ -128,7 +154,12 @@ def get_function_or_statement_context(file_path, code, source_code, line_number)
 
     include_paths = CONFIG.get('include_paths', [])
 
-    args = ['-std=c99'] + [f'-I{path}' for path in include_paths]
+    args = [
+        '-std=c99',
+        '-fms-extensions',
+        '-fms-compatibility',
+        '-fdelayed-template-parsing'
+    ] + [f'-I{path}' for path in include_paths]
 
     tu = index.parse(str(file_path), args=args)
 
@@ -162,6 +193,7 @@ def get_function_or_statement_context(file_path, code, source_code, line_number)
 def extract_removed_code(repo, commit):
     removed_code = []
     previous_commit = get_previous_commit(repo, commit.hash)
+    loaded_headers = set()
     with tempfile.TemporaryDirectory() as temp_dir:
         for modified_file in commit.modified_files:
             if modified_file.new_path is None:
@@ -181,7 +213,7 @@ def extract_removed_code(repo, commit):
                         f"Could not load {modified_file.new_path} at {previous_commit}. Skipping"
                     )
                     continue
-                headers = extract_headers(full_code)
+                headers = extract_headers(full_code, repo, previous_commit, loaded_headers)
                 try:
                     for header in headers:
                         if not Path(temp_dir, header).is_file():
