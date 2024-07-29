@@ -21,6 +21,8 @@ else:
 
 clang.cindex.Config.set_library_file(library_file)
 
+INCLUDE_PATTERN = r'^\s*#include\s+(<[^>]+>|"[^"]+")\s*$'
+
 
 def is_fix_commit(commit):
     # TODO - this is far to simple, we need to analyze the issues and PRs
@@ -31,7 +33,9 @@ def get_file_content_at_commit(repo, commit_hash, file_path):
     commit = repo.get(commit_hash)
     tree = commit.tree
     blob = tree[file_path].data
-    return blob.decode("utf-8")
+    content = blob.decode("utf-8")
+    content = remove_conditional_definitions(content)
+    return content
 
 
 def get_previous_commit(repo, commit):
@@ -82,7 +86,6 @@ def is_text_in_comment(node, search_text, line_number=0):
             # Normalize spaces and check if the search text is in the comment
             normalized_comment = normalize_code(token.spelling)
             if search_text in normalized_comment:
-                print(f"{search_text} is a comment")
                 return True
     return False
 
@@ -145,20 +148,26 @@ def extract_headers(code, repo, commit, processed=None):
                 continue
             included_headers = extract_headers(file_content, repo, commit, processed)
             all_headers.update(included_headers)
-    print(all_headers)
     return all_headers
 
+
+def remove_conditional_definitions(content):
+    return re.sub(r'^#ifdef.*?$\n|^#ifndef.*?$\n|^#endif.*?$\n', "\n", content, flags=re.M)
 
 def get_function_or_statement_context(file_path, code, source_code, line_number):
     index = clang.cindex.Index.create()
 
     include_paths = CONFIG.get('include_paths', [])
 
+    # -includetypes.h - types.h should be in /usr/include/sys/types on Linux.
+    # On Windows, download and add path to config.json
     args = [
         '-std=c99',
         '-fms-extensions',
         '-fms-compatibility',
-        '-fdelayed-template-parsing'
+        '-fdelayed-template-parsing',
+        '-DUSE_CURL_MULTI',
+        '-includetypes.h'
     ] + [f'-I{path}' for path in include_paths]
 
     tu = index.parse(str(file_path), args=args)
@@ -198,6 +207,7 @@ def extract_removed_code(repo, commit):
         for modified_file in commit.modified_files:
             if modified_file.new_path is None:
                 continue
+
             file_path = Path(modified_file.new_path)
             if file_path.suffix not in (".h", ".c"):
                 continue
@@ -207,29 +217,35 @@ def extract_removed_code(repo, commit):
                         repo, previous_commit, modified_file.new_path
                     )
                     file_path = Path(temp_dir, file_path)
+                    file_path.parent.mkdir(exist_ok=True, parents=True)
                     file_path.write_text(full_code)
-                except Exception:
+                except Exception as e:
                     print(
-                        f"Could not load {modified_file.new_path} at {previous_commit}. Skipping"
+                        f"Could not load {modified_file.new_path} at {previous_commit} due to {e}. Skipping"
                     )
                     continue
                 headers = extract_headers(full_code, repo, previous_commit, loaded_headers)
                 try:
                     for header in headers:
-                        if not Path(temp_dir, header).is_file():
+                        path = Path(temp_dir, header)
+                        if not path.is_file():
+                            path.parent.mkdir(exist_ok=True, parents=True)
                             header_content = get_file_content_at_commit(
                                 repo, previous_commit, header
                             )
                             Path(temp_dir, header).write_text(header_content)
-                except Exception:
-                    print(f"Could not load {header} at {previous_commit}. Skipping")
-                    continue
+                except Exception as e:
+                    print(f"Could not load {header} at {previous_commit} due to {e}. Skipping")
 
-                removed = modified_file.diff_parsed["deleted"]
                 removed_line_data = {}
+                removed = modified_file.diff_parsed["deleted"]
                 for line_number, code in removed:
                     code = code.strip()
                     if code == "":
+                        continue
+                    match = re.match(INCLUDE_PATTERN, code)
+                    if match:
+                        print("Skipping include")
                         continue
                     try:
                         context = get_function_or_statement_context(
