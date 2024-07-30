@@ -1,0 +1,8 @@
+{
+    "include_paths": [
+        "C:/Program Files (x86)/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.40.33807/include",
+        "C:/Program Files (x86)/Windows Kits/10/Include/10.0.22000.0/ucrt",
+        "C:/Program Files (x86)/Windows Kits/10/Include/10.0.22000.0/shared",
+        "D:/atoms/ASTreeAnalyzer/libs/windows"
+    ]
+}

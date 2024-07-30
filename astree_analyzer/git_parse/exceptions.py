@@ -1,0 +1,2 @@
+class TextInCommentError(Exception):
+    pass
