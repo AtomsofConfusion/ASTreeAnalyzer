@@ -64,6 +64,25 @@ def get_code_from_extent(code, extent):
     return code_lines
 
 
+def _init_translation_unit(file_path):
+    index = clang.cindex.Index.create()
+    include_paths = CONFIG.get("include_paths", [])
+
+    # -includetypes.h - types.h should be in /usr/include/sys/types on Linux.
+    # On Windows, download and add path to config.json
+    args = [
+        "-std=c99",
+        "-fms-extensions",
+        "-fms-compatibility",
+        "-fdelayed-template-parsing",
+        "-DUSE_CURL_MULTI",
+        "-includetypes.h",
+    ] + [f"-I{path}" for path in include_paths]
+
+    tu = index.parse(str(file_path), args=args)
+    return tu
+
+
 def normalize_code(text):
     """
     Normalize code by removing extra spaces around punctuation and making it lowercase.
@@ -113,14 +132,21 @@ def find_smallest_containing_node(
     if contains_expression(node, expression, line_number):
         ancestors.append(node)
         best_match = node
+        # print("--------------------")
+        # node_text = " ".join([token.spelling for token in node.get_tokens()])
+        # print(node_text)
+        # print("**************************88")
         for child in node.get_children():
+            # node_text = " ".join([token.spelling for token in child.get_tokens()])
+            # print(node_text)
+            # print("***************8")
             best_match = find_smallest_containing_node(
                 child, expression, line_number, ancestors, best_match
             )
     return best_match
 
 
-def extract_headers(code, repo, commit, processed=None):
+def _extract_headers(code, repo, commit, processed=None):
     """
     Recursively extract all unique header file names from the C code.
 
@@ -140,37 +166,54 @@ def extract_headers(code, repo, commit, processed=None):
         if header not in processed:
             processed.add(header)
             try:
-                file_content = get_file_content_at_commit(
-                    repo, commit, header
-                )
+                file_content = get_file_content_at_commit(repo, commit, header)
             except Exception:
                 print(f"Cannot load {header} at {commit}")
                 continue
-            included_headers = extract_headers(file_content, repo, commit, processed)
+            included_headers = _extract_headers(file_content, repo, commit, processed)
             all_headers.update(included_headers)
     return all_headers
 
 
+def _save_file_to_temp(repo, output_dir, commit, file_path):
+    full_code = get_file_content_at_commit(repo, commit, file_path)
+    file_path = Path(output_dir, file_path)
+    file_path.parent.mkdir(exist_ok=True, parents=True)
+    file_path.write_text(full_code)
+    return full_code
+
+
+def _save_headers_to_temp(full_code, output_dir, repo, commit, loaded_headers):
+    headers = _extract_headers(full_code, repo, commit, loaded_headers)
+    try:
+        for header in headers:
+            path = Path(output_dir, header)
+            if not path.is_file():
+                path.parent.mkdir(exist_ok=True, parents=True)
+                header_content = get_file_content_at_commit(repo, commit, header)
+                Path(output_dir, header).write_text(header_content)
+    except Exception as e:
+        print(f"Could not load {header} at {commit} due to {e}. Skipping")
+
+
+def _run_diagnostics(tu, file_name):
+    if len(tu.diagnostics):
+        print(f"Error(s) occurred while parsing {file_name}")
+        for diag in tu.diagnostics:
+            print(diag)
+        # if "undeclared identifier" in diag.spelling:
+        #     print(f"Undefined Identifier in {file_name}: {diag.spelling}")
+
+
 def remove_conditional_definitions(content):
-    return re.sub(r'^#ifdef.*?$\n|^#ifndef.*?$\n|^#endif.*?$\n', "\n", content, flags=re.M)
+    return re.sub(
+        r"^#ifdef.*?$\n|^#ifndef.*?$\n|^#endif.*?$\n", "\n", content, flags=re.M
+    )
+
 
 def get_function_or_statement_context(file_path, code, source_code, line_number):
-    index = clang.cindex.Index.create()
-
-    include_paths = CONFIG.get('include_paths', [])
-
-    # -includetypes.h - types.h should be in /usr/include/sys/types on Linux.
-    # On Windows, download and add path to config.json
-    args = [
-        '-std=c99',
-        '-fms-extensions',
-        '-fms-compatibility',
-        '-fdelayed-template-parsing',
-        '-DUSE_CURL_MULTI',
-        '-includetypes.h'
-    ] + [f'-I{path}' for path in include_paths]
-
-    tu = index.parse(str(file_path), args=args)
+    tu = _init_translation_unit(file_path)
+    # _run_diagnostics(tu, file_path)
 
     root_node = tu.cursor
     ancestors = []
@@ -180,8 +223,8 @@ def get_function_or_statement_context(file_path, code, source_code, line_number)
         node = find_smallest_containing_node(
             root_node, source_code, line_number, ancestors
         )
-    except UnicodeDecodeError:
-        print(f"Could not parse {file_path}. Skipping")
+    except UnicodeDecodeError as e:
+        print(f"Could not parse {file_path} due to {e}. Skipping")
         return None
 
     # if node is not None:
@@ -194,7 +237,7 @@ def get_function_or_statement_context(file_path, code, source_code, line_number)
     #                                    clang.cindex.CursorKind.CLASS_DECL):
     #             node = parent_node
     #             break
-    if node is not None:
+    if node is not None and node != root_node:
         return get_code_from_extent(code, node.extent)
     return None
 
@@ -213,30 +256,26 @@ def extract_removed_code(repo, commit):
                 continue
             if modified_file.diff_parsed:
                 try:
-                    full_code = get_file_content_at_commit(
-                        repo, previous_commit, modified_file.new_path
+                    full_code = _save_file_to_temp(
+                        repo,
+                        temp_dir,
+                        previous_commit,
+                        Path(modified_file.new_path).as_posix(),
                     )
                     file_path = Path(temp_dir, file_path)
-                    file_path.parent.mkdir(exist_ok=True, parents=True)
-                    file_path.write_text(full_code)
                 except Exception as e:
                     print(
                         f"Could not load {modified_file.new_path} at {previous_commit} due to {e}. Skipping"
                     )
                     continue
-                headers = extract_headers(full_code, repo, previous_commit, loaded_headers)
-                try:
-                    for header in headers:
-                        path = Path(temp_dir, header)
-                        if not path.is_file():
-                            path.parent.mkdir(exist_ok=True, parents=True)
-                            header_content = get_file_content_at_commit(
-                                repo, previous_commit, header
-                            )
-                            Path(temp_dir, header).write_text(header_content)
-                except Exception as e:
-                    print(f"Could not load {header} at {previous_commit} due to {e}. Skipping")
 
+                _save_headers_to_temp(
+                    commit=previous_commit,
+                    output_dir=temp_dir,
+                    repo=repo,
+                    full_code=full_code,
+                    loaded_headers=loaded_headers,
+                )
                 removed_line_data = {}
                 removed = modified_file.diff_parsed["deleted"]
                 for line_number, code in removed:
@@ -245,7 +284,6 @@ def extract_removed_code(repo, commit):
                         continue
                     match = re.match(INCLUDE_PATTERN, code)
                     if match:
-                        print("Skipping include")
                         continue
                     try:
                         context = get_function_or_statement_context(
@@ -264,7 +302,6 @@ def extract_removed_code(repo, commit):
     return removed_code
 
 
-
 def dump_bugfix_data(project_dir, output_file, num_of_commits=None):
 
     repo = pygit2.Repository(project_dir)
@@ -281,6 +318,94 @@ def dump_bugfix_data(project_dir, output_file, num_of_commits=None):
             if removed_code:
                 fix_commits_data[commit.hash] = removed_code
     Path(output_file).write_text(json.dumps(fix_commits_data, indent=4))
+
+
+def find_code_next_to_comments(file_path):
+    tu = _init_translation_unit(file_path)
+    relevant_code_snippets = []
+    root = tu.cursor
+
+    def recursive_node_search(node, file_path):
+        # Check each child node
+        parent_tokens = list(node.get_tokens())
+        comment_lines = []
+        # Identify lines that contain comments
+        for token in parent_tokens:
+            if token.kind == clang.cindex.TokenKind.COMMENT:
+                comment_lines.append(token.location.line)
+
+        # Check each child node
+        for child in node.get_children():
+            if child.location and child.location.file:
+                if (
+                    Path(child.location.file.name).as_posix()
+                    != Path(file_path).as_posix()
+                ):
+                    continue
+
+            if child.kind not in [
+                clang.cindex.CursorKind.TYPEDEF_DECL,
+                clang.cindex.CursorKind.FUNCTION_DECL,
+                clang.cindex.CursorKind.CXX_METHOD,
+                clang.cindex.CursorKind.FUNCTION_TEMPLATE,
+            ]:
+                child_start_line = child.extent.start.line
+
+                # Check if the line before the child's start contains a comment
+                if (
+                    child_start_line - 1 in comment_lines
+                    or child_start_line in comment_lines
+                ):
+                    # If found, capture the entire content of the child node
+                    node_text = " ".join(
+                        [token.spelling for token in child.get_tokens()]
+                    )
+                    relevant_code_snippets.append((child_start_line, node_text))
+
+            # Recursively search within the child
+            recursive_node_search(child, file_path)
+
+    recursive_node_search(root, file_path)
+    return relevant_code_snippets
+
+
+def dump_comments_data(project_dir, output_file, commit):
+    comments_data = []
+    repo = pygit2.Repository(project_dir)
+    if commit is None:
+        head_commit = repo.head.peel(pygit2.GIT_OBJECT_COMMIT)
+        commit = head_commit.id
+
+    project_dir = Path(project_dir)
+    loaded_headers = set()
+    comments_line_data = {}
+    with tempfile.TemporaryDirectory() as temp_dir:
+        for file_path in project_dir.rglob("*.[ch]"):
+            relative_path = file_path.relative_to(project_dir).as_posix()
+            try:
+                full_code = _save_file_to_temp(
+                    repo, temp_dir, commit, str(relative_path)
+                )
+                file_path = Path(temp_dir, relative_path)
+            except Exception as e:
+                print(
+                    f"Could not load {relative_path} at {commit} due to {e}. Skipping"
+                )
+            _save_headers_to_temp(
+                commit=commit,
+                output_dir=temp_dir,
+                repo=repo,
+                full_code=full_code,
+                loaded_headers=loaded_headers,
+            )
+            comments = find_code_next_to_comments(file_path)
+            for comment_data in comments:
+                comments_line_data.setdefault(relative_path, {})[
+                    comment_data[0]
+                ] = comment_data[1]
+
+            comments_data.append({"file": file_path, "comments": comments_line_data})
+        Path(output_file).write_text(json.dumps(comments_line_data, indent=4))
 
 
 def parse_test_file(test_file, code, line_number):
