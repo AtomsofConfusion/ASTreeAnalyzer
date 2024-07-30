@@ -7,7 +7,7 @@ import multiprocessing
 # Add the parent directory to the sys.path
 # sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from git_parse.git_parse import dump_bugfix_data, parse_test_file
+from git_parse.git_parse import dump_bugfix_data, dump_comments_data, parse_test_file
 from parser.projectAnalyzer import process_file, process_directory
 
 
@@ -54,6 +54,7 @@ def parse_dir(input_dir, output_file, human_readable):
         include_human_readable=human_readable,
     )
 
+
 @ast.command()
 @click.argument("test_file", type=click.Path(exists=True))
 @click.argument("test_sample", type=click.Path(exists=True))
@@ -84,6 +85,19 @@ def dump_bugfix_commits(project_dir, output_file, num_of_commits):
         project_dir,
         output_file,
         num_of_commits,
+    )
+
+
+@ast.command()
+@click.argument("project_dir", type=click.Path(exists=True))
+@click.argument("output_file", type=click.Path())
+@click.option("--commit", type=str, default=None)
+def dump_comments(project_dir, output_file, commit):
+    """Analyze the given INPUT_DIR."""
+    dump_comments_data(
+        project_dir,
+        output_file,
+        commit,
     )
 
 
