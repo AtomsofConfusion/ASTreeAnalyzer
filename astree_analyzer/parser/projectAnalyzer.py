@@ -1,5 +1,5 @@
 import csv
-from pydriller import Repository
+from parser.parse import ASTSerializer, count_subtrees, hash_subtree
 from pathlib import Path
 import pandas as pd
 from multiprocessing import Process, Queue

@@ -1,7 +1,10 @@
+from collections import defaultdict
+import csv
 import json
 import platform
 import tempfile
-from git_parse.exceptions import TextInCommentError
+from parser.parse import ASTSerializer, count_subtrees, hash_subtree
+from extraction.exceptions import TextInCommentError
 import clang.cindex
 import pygit2
 import re
@@ -63,6 +66,17 @@ def get_code_from_extent(code, extent):
         pass
     return code_lines
 
+
+def write_subtrees_counts(subtrees, ouput_file):
+    rows = []
+    subtree_counter = count_subtrees(subtrees)
+    for subtree, count in subtree_counter.items():
+        hash_val = hash_subtree(subtree)
+        rows.append([hash_val, count, subtree])
+
+    with Path(ouput_file).open("a", newline="") as file:
+        writer = csv.writer(file)
+        writer.writerows(rows)
 
 def _init_translation_unit(file_path):
     index = clang.cindex.Index.create()
@@ -146,7 +160,7 @@ def find_smallest_containing_node(
     return best_match
 
 
-def _extract_headers(code, repo, commit, processed=None):
+def _extract_headers(code, repo, commit, processed, invalid):
     """
     Recursively extract all unique header file names from the C code.
 
@@ -155,22 +169,22 @@ def _extract_headers(code, repo, commit, processed=None):
     :param processed: A set to keep track of processed header files to avoid cyclic includes.
     :return: A set of all header files included in the code, directly or indirectly.
     """
-    if processed is None:
-        processed = set()
-
     header_pattern = re.compile(r'#include\s+"([^"]+)"')
     headers = set(header_pattern.findall(code))
     all_headers = set(headers)
 
     for header in headers:
-        if header not in processed:
-            processed.add(header)
+        if header in processed[commit] or header in invalid[commit]:
+            continue
+        if header not in processed[commit]:
+            processed[commit].append(header)
             try:
                 file_content = get_file_content_at_commit(repo, commit, header)
-            except Exception:
-                print(f"Cannot load {header} at {commit}")
+            except Exception as e:
+                print(f"Cannot load {header} at {commit} due to {e}")
+                invalid[commit].append(header)
                 continue
-            included_headers = _extract_headers(file_content, repo, commit, processed)
+            included_headers = _extract_headers(file_content, repo, commit, processed, invalid)
             all_headers.update(included_headers)
     return all_headers
 
@@ -183,8 +197,8 @@ def _save_file_to_temp(repo, output_dir, commit, file_path):
     return full_code
 
 
-def _save_headers_to_temp(full_code, output_dir, repo, commit, loaded_headers):
-    headers = _extract_headers(full_code, repo, commit, loaded_headers)
+def _save_headers_to_temp(full_code, output_dir, repo, commit, loaded_headers, invalid_headers):
+    headers = _extract_headers(full_code, repo, commit, loaded_headers, invalid_headers)
     try:
         for header in headers:
             path = Path(output_dir, header)
@@ -194,6 +208,7 @@ def _save_headers_to_temp(full_code, output_dir, repo, commit, loaded_headers):
                 Path(output_dir, header).write_text(header_content)
     except Exception as e:
         print(f"Could not load {header} at {commit} due to {e}. Skipping")
+    return headers
 
 
 def _run_diagnostics(tu, file_name):
@@ -245,7 +260,8 @@ def get_function_or_statement_context(file_path, code, source_code, line_number)
 def extract_removed_code(repo, commit):
     removed_code = []
     previous_commit = get_previous_commit(repo, commit.hash)
-    loaded_headers = set()
+    loaded_headers = defaultdict(list)
+    invalid_headers = defaultdict(list)
     with tempfile.TemporaryDirectory() as temp_dir:
         for modified_file in commit.modified_files:
             if modified_file.new_path is None:
@@ -275,6 +291,7 @@ def extract_removed_code(repo, commit):
                     repo=repo,
                     full_code=full_code,
                     loaded_headers=loaded_headers,
+                    invalid_headers=invalid_headers,
                 )
                 removed_line_data = {}
                 removed = modified_file.diff_parsed["deleted"]
@@ -302,6 +319,48 @@ def extract_removed_code(repo, commit):
     return removed_code
 
 
+def extract_commented_code(repo, project_dir, commit, serializer, num_of_files=None):
+    loaded_headers = defaultdict(list)
+    invalid_headers = defaultdict(list)
+    project_dir = Path(project_dir)
+    comments_line_data = {}
+    all_subtrees = []
+    count = 0
+    with tempfile.TemporaryDirectory() as temp_dir:
+        for file_path in project_dir.rglob("*.[ch]"):
+            if num_of_files is not None and count == num_of_files:
+                break
+            count += 1
+            relative_path = file_path.relative_to(project_dir).as_posix()
+            try:
+                full_code = _save_file_to_temp(
+                    repo, temp_dir, commit, str(relative_path)
+                )
+                file_path = Path(temp_dir, relative_path)
+            except Exception as e:
+                print(
+                    f"Could not load {relative_path} at {commit} due to {e}. Skipping"
+                )
+                continue
+            _save_headers_to_temp(
+                commit=commit,
+                output_dir=temp_dir,
+                repo=repo,
+                full_code=full_code,
+                loaded_headers=loaded_headers,
+                invalid_headers=invalid_headers,
+            )
+            try:
+                comments = find_code_next_to_comments(file_path, serializer=serializer)
+            except Exception as e:
+                print(f"An error occurred while finding comment sof {file_path}. Skipping")
+                continue
+            for comment_data in comments:
+                all_subtrees.extend(comment_data.pop("subtrees"))
+                comments_line_data.setdefault(str(relative_path), []).append(comment_data)
+
+    return comments_line_data, all_subtrees
+
 def dump_bugfix_data(project_dir, output_file, num_of_commits=None):
 
     repo = pygit2.Repository(project_dir)
@@ -320,7 +379,8 @@ def dump_bugfix_data(project_dir, output_file, num_of_commits=None):
     Path(output_file).write_text(json.dumps(fix_commits_data, indent=4))
 
 
-def find_code_next_to_comments(file_path):
+
+def find_code_next_to_comments(file_path, serializer):
     tu = _init_translation_unit(file_path)
     relevant_code_snippets = []
     root = tu.cursor
@@ -356,11 +416,20 @@ def find_code_next_to_comments(file_path):
                     child_start_line - 1 in comment_lines
                     or child_start_line in comment_lines
                 ):
+                    if child_start_line - 1 in comment_lines:
+                        comment_lines.remove(child_start_line - 1)
+                    else:
+                        comment_lines.remove(child_start_line)
+
                     # If found, capture the entire content of the child node
-                    node_text = " ".join(
-                        [token.spelling for token in child.get_tokens()]
-                    )
-                    relevant_code_snippets.append((child_start_line, node_text))
+                    node_part = _get_relavant_node_part(child)
+                    node_text = " ".join([token.spelling for token in node_part.get_tokens()])
+                    subtrees = serializer.exctract_subtrees_for_node(node_part)
+                    relevant_code_snippets.append({
+                        "line": child_start_line,
+                        "node": node_text,
+                        "subtrees": subtrees
+                    })
 
             # Recursively search within the child
             recursive_node_search(child, file_path)
@@ -369,43 +438,41 @@ def find_code_next_to_comments(file_path):
     return relevant_code_snippets
 
 
-def dump_comments_data(project_dir, output_file, commit):
-    comments_data = []
+def _get_relavant_node_part(node):
+    control_structures = [
+        clang.cindex.CursorKind.IF_STMT,
+        clang.cindex.CursorKind.WHILE_STMT,
+        clang.cindex.CursorKind.FOR_STMT,
+        clang.cindex.CursorKind.SWITCH_STMT,
+    ]
+    if node.kind in control_structures:
+        return list(node.get_children())[0]
+    if node.kind == clang.cindex.CursorKind.DO_STMT:
+        return list(node.get_children())[-1]
+    return node
+
+
+
+def dump_comments_data(project_dir, output_file, commit, num_of_files=None):
     repo = pygit2.Repository(project_dir)
     if commit is None:
         head_commit = repo.head.peel(pygit2.GIT_OBJECT_COMMIT)
         commit = head_commit.id
 
-    project_dir = Path(project_dir)
-    loaded_headers = set()
-    comments_line_data = {}
-    with tempfile.TemporaryDirectory() as temp_dir:
-        for file_path in project_dir.rglob("*.[ch]"):
-            relative_path = file_path.relative_to(project_dir).as_posix()
-            try:
-                full_code = _save_file_to_temp(
-                    repo, temp_dir, commit, str(relative_path)
-                )
-                file_path = Path(temp_dir, relative_path)
-            except Exception as e:
-                print(
-                    f"Could not load {relative_path} at {commit} due to {e}. Skipping"
-                )
-            _save_headers_to_temp(
-                commit=commit,
-                output_dir=temp_dir,
-                repo=repo,
-                full_code=full_code,
-                loaded_headers=loaded_headers,
-            )
-            comments = find_code_next_to_comments(file_path)
-            for comment_data in comments:
-                comments_line_data.setdefault(relative_path, {})[
-                    comment_data[0]
-                ] = comment_data[1]
+    serializer = ASTSerializer()
+    output_path = Path(output_file)
+    comments_data, subtrees = extract_commented_code(repo, project_dir, commit, serializer, num_of_files)
+    output_path.write_text(json.dumps(
+        {
+            str(commit): comments_data
+        }, indent=4))
 
-            comments_data.append({"file": file_path, "comments": comments_line_data})
-        Path(output_file).write_text(json.dumps(comments_line_data, indent=4))
+    output_dir = output_path.parent
+    output_name = output_path.stem
+    subtrees_dir = output_dir / "subtrees"
+    subtrees_dir.mkdir(exist_ok=True)
+    subtrees_path = subtrees_dir / f"{output_name}.csv"
+    write_subtrees_counts(subtrees, subtrees_path)
 
 
 def parse_test_file(test_file, code, line_number):
