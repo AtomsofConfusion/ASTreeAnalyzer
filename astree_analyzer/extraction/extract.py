@@ -240,7 +240,7 @@ def get_function_or_statement_context(file_path, code, source_code, line_number)
         )
     except UnicodeDecodeError as e:
         print(f"Could not parse {file_path} due to {e}. Skipping")
-        return None
+        return None, None
 
     # if node is not None:
     #     ancestors.reverse()
@@ -253,8 +253,8 @@ def get_function_or_statement_context(file_path, code, source_code, line_number)
     #             node = parent_node
     #             break
     if node is not None and node != root_node:
-        return get_code_from_extent(code, node.extent)
-    return None
+        return node, get_code_from_extent(code, node.extent)
+    return None, None
 
 
 def extract_removed_code(repo, commit):
@@ -262,6 +262,8 @@ def extract_removed_code(repo, commit):
     previous_commit = get_previous_commit(repo, commit.hash)
     loaded_headers = defaultdict(list)
     invalid_headers = defaultdict(list)
+    all_subtrees = []
+    serializer = ASTSerializer()
     with tempfile.TemporaryDirectory() as temp_dir:
         for modified_file in commit.modified_files:
             if modified_file.new_path is None:
@@ -303,12 +305,18 @@ def extract_removed_code(repo, commit):
                     if match:
                         continue
                     try:
-                        context = get_function_or_statement_context(
+                        containing_node, node_text = get_function_or_statement_context(
                             file_path, full_code, code, line_number
                         )
+                        if containing_node is not None:
+                            if len(node_text) > 500:
+                                print(f"{file_path}, line {line_number} is porbably not being parsed correctly. Skipping")
+                                continue
+                            subtrees = serializer.exctract_subtrees_for_node(containing_node)
+                            all_subtrees.extend(subtrees)
+                            removed_line_data[line_number] = {"context": node_text, "code": code}
                     except TextInCommentError:
                         continue
-                    removed_line_data[line_number] = {"context": context, "code": code}
 
                 removed_code.append(
                     {
@@ -316,7 +324,7 @@ def extract_removed_code(repo, commit):
                         "removed": removed_line_data,
                     }
                 )
-    return removed_code
+    return removed_code, all_subtrees
 
 
 def extract_commented_code(repo, project_dir, commit, serializer, num_of_files=None):
@@ -367,16 +375,21 @@ def dump_bugfix_data(project_dir, output_file, num_of_commits=None):
     fix_commits_data = {}
 
     # Mining the local repository
+    all_subtrees = []
     count = 0
     for commit in Repository(project_dir).traverse_commits():
         if num_of_commits is not None and count == num_of_commits:
             break
         if is_fix_commit(commit):
             count += 1
-            removed_code = extract_removed_code(repo, commit)
+            removed_code, subtrees = extract_removed_code(repo, commit)
+            all_subtrees.extend(subtrees)
             if removed_code:
                 fix_commits_data[commit.hash] = removed_code
     Path(output_file).write_text(json.dumps(fix_commits_data, indent=4))
+    output_path = Path(output_file)
+    subtrees_path = _get_subtrees_output_path(output_path)
+    write_subtrees_counts(all_subtrees, subtrees_path)
 
 
 
@@ -424,6 +437,9 @@ def find_code_next_to_comments(file_path, serializer):
                     # If found, capture the entire content of the child node
                     node_part = _get_relavant_node_part(child)
                     node_text = " ".join([token.spelling for token in node_part.get_tokens()])
+                    if len(node_text) > 500:
+                        print(f"{file_path}, line {child_start_line} is porbably not being parsed correctly. Skipping")
+                        continue
                     subtrees = serializer.exctract_subtrees_for_node(node_part)
                     relevant_code_snippets.append({
                         "line": child_start_line,
@@ -467,13 +483,16 @@ def dump_comments_data(project_dir, output_file, commit, num_of_files=None):
             str(commit): comments_data
         }, indent=4))
 
+    subtrees_path = _get_subtrees_output_path(output_path)
+    write_subtrees_counts(subtrees, subtrees_path)
+
+
+def _get_subtrees_output_path(output_path: Path):
     output_dir = output_path.parent
     output_name = output_path.stem
     subtrees_dir = output_dir / "subtrees"
     subtrees_dir.mkdir(exist_ok=True)
-    subtrees_path = subtrees_dir / f"{output_name}.csv"
-    write_subtrees_counts(subtrees, subtrees_path)
-
+    return subtrees_dir / f"{output_name}.csv"
 
 def parse_test_file(test_file, code, line_number):
     full_code = Path(test_file).read_text()
