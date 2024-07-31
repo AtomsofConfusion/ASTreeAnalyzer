@@ -61,6 +61,12 @@ class ASTSerializer:
         subtrees = self._extract_subtrees(ast)
         return subtrees
 
+    def exctract_subtrees_for_node(self, node):
+        self.node_cache.clear()
+        self.anon_map.clear()
+        subtrees = self._extract_subtrees(node)
+        return subtrees
+
     def _get_node_cache(self, node):
         node_id = node.hash
         node_data = self.node_cache.get(node_id)
@@ -166,22 +172,6 @@ class ASTSerializer:
 
         return f"{node_rep}({','.join(children_rep)})" if children_rep else node_rep
 
-    def _extract_subtrees(self, root):
-        subtrees = []
-        stack = [root]
-
-        while stack:
-            node = stack.pop()
-
-            self.anon_map.clear()
-            subtree = self._serialize_node(node)
-            subtrees.append(subtree)
-
-            children = self._get_node_children(node)
-
-            for child in children:
-                stack.append(child)
-        return subtrees
 
     # Gets all subtrees with node parameter as root
     def _extract_subtrees(self, root):

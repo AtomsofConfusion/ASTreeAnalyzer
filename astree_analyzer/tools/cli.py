@@ -7,7 +7,8 @@ import multiprocessing
 # Add the parent directory to the sys.path
 # sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from git_parse.git_parse import dump_bugfix_data, dump_comments_data, parse_test_file
+from analysis.statistics import calculate_frequencies
+from extraction.extract import dump_bugfix_data, dump_comments_data, parse_test_file
 from parser.projectAnalyzer import process_file, process_directory
 
 
@@ -69,12 +70,6 @@ def test_parse(test_file, test_sample, line_number):
     )
 
 
-if __name__ == "__main__":
-    # Set the multiprocessing start method to 'fork'
-    multiprocessing.set_start_method("fork")
-    ast()
-
-
 @ast.command()
 @click.argument("project_dir", type=click.Path(exists=True))
 @click.argument("output_file", type=click.Path())
@@ -92,12 +87,26 @@ def dump_bugfix_commits(project_dir, output_file, num_of_commits):
 @click.argument("project_dir", type=click.Path(exists=True))
 @click.argument("output_file", type=click.Path())
 @click.option("--commit", type=str, default=None)
-def dump_comments(project_dir, output_file, commit):
+@click.option("--num-of-files", type=int, default=None)
+def dump_comments(project_dir, output_file, commit, num_of_files):
     """Analyze the given INPUT_DIR."""
     dump_comments_data(
         project_dir,
         output_file,
         commit,
+        num_of_files,
+    )
+
+
+@ast.command()
+@click.argument("all_subtrees_input_path", type=click.Path(exists=True))
+@click.argument("bugfixes_input_path", type=click.Path(exists=True))
+@click.argument("comments_input_path", type=click.Path(exists=True))
+def analyze(all_subtrees_input_path, bugfixes_input_path, comments_input_path):
+    calculate_frequencies(
+        Path(all_subtrees_input_path),
+        Path(bugfixes_input_path),
+        Path(comments_input_path),
     )
 
 
