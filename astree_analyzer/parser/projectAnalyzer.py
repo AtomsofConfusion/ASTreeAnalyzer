@@ -1,5 +1,5 @@
 import csv
-from parser.parse import ASTSerializer, count_subtrees, hash_subtree
+from parser.parse import ASTSerializer, count_subtrees, deserialize_subtree, hash_subtree, print_tree, tree_to_expression
 from pathlib import Path
 import pandas as pd
 from multiprocessing import Process, Queue
