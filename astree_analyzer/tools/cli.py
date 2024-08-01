@@ -47,12 +47,17 @@ def parse_file(input_file, output_file, human_readable, profile):
     default=False,
     help="Include human-readable columns in the output.",
 )
-def parse_dir(input_dir, output_file, human_readable):
+@click.option(
+    "--output-format",
+    default="json",
+)
+def parse_dir(input_dir, output_file, human_readable, output_format):
     """Analyze the given INPUT_DIR."""
     process_directory(
         Path(input_dir),
         Path(output_file),
         include_human_readable=human_readable,
+        output_format=output_format,
     )
 
 
