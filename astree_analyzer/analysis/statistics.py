@@ -2,13 +2,11 @@ import csv
 import json
 import math
 from pathlib import Path
-# import matplotlib.pyplot as plt
 import plotly.express as px
-from scipy.stats import chisquare
 import pandas as pd
 
 
-def calculate_frequencies(all_subtrees_input_path, bugfixes_input_path, comments_input_path):
+def calculate_frequencies(all_subtrees_input_path, bugfixes_input_path, comments_input_path, output_dir=None):
     bugfix_data = _extract_data_from_json(bugfixes_input_path)
     comment_data  = _extract_data_from_json(comments_input_path)
     project_frequencies = _extract_proejct_counts(all_subtrees_input_path)
@@ -80,20 +78,29 @@ def calculate_frequencies(all_subtrees_input_path, bugfixes_input_path, comments
         else:
             code.append(comment_code[tree_hash])
 
-    output_data = [{
-        "deviation": deviation_ratios_bugfix[tree_hash],
-        "subtree": bugfix_code[tree_hash]
-        }
-        for tree_hash in deviation_ratios_bugfix if deviation_ratios_bugfix[tree_hash] > 0
-    ]
-    Path("D:/atoms/output/bugfix_deviation.json").write_text(json.dumps(output_data, indent=4))
-    output_data = [{
-        "deviation": deviation_ratios_comments[tree_hash],
-        "subtree": comment_code[tree_hash]
-        }
-        for tree_hash in deviation_ratios_comments if deviation_ratios_comments[tree_hash] > 0
-    ]
-    Path("D:/atoms/output/comments_deviation.json").write_text(json.dumps(output_data, indent=4))
+
+    if output_dir:
+        output_dir = Path(output_dir)
+        if not output_dir.is_dir():
+            output_dir.mkdir(parents=True)
+
+        output_data = [{
+            "deviation": deviation_ratios_bugfix[tree_hash],
+            "subtree": bugfix_code[tree_hash],
+            "count": bugfix_frequencies[tree_hash],
+            }
+            for tree_hash in deviation_ratios_bugfix if deviation_ratios_bugfix[tree_hash] > 0
+        ]
+
+        Path(output_dir, "bugfix_deviation.json").write_text(json.dumps(output_data, indent=4))
+        output_data = [{
+            "deviation": deviation_ratios_comments[tree_hash],
+            "subtree": comment_code[tree_hash],
+            "count": comment_frequencies[tree_hash],
+            }
+            for tree_hash in deviation_ratios_comments if deviation_ratios_comments[tree_hash] > 0
+        ]
+        Path(output_dir, "comments_deviation.json").write_text(json.dumps(output_data, indent=4))
 
 
     df = pd.DataFrame({
@@ -103,48 +110,18 @@ def calculate_frequencies(all_subtrees_input_path, bugfixes_input_path, comments
         'Code': code,
     })
 
-    # Create the scatter plot with plotly express
     fig = px.scatter(
         df,
         x='Comment Deviation',
         y='Bugfix Deviation',
         hover_name="Code",
         title='Comparison of Subtree Deviations in Bug Fixes and Comments',
-        size='Size',  # Optional: Size of the points proportional to bugfix deviation
-        size_max=50  # Maximum size of the points
+        size='Size',
+        size_max=50
     )
 
-    # Show the plot
     fig.show()
 
-
-def calculate_chi_square(bugfix_count, project_count, scale_factor=1):
-    bugfix_count = {
-        subtree: count for subtree, count in bugfix_count.items() if subtree in project_count
-    }
-    total_bugfix_subtrees = sum(bugfix_count.values())
-    total_project_subtrees = sum(project_count.values())
-
-    observed_count = []
-    expected_count = []
-
-    # Compute expected and observed count
-    for subtree, bugfix_freq in bugfix_count.items():
-        expected_freq = (project_count.get(subtree, 0) / total_project_subtrees) * total_bugfix_subtrees
-        expected_freq_scaled = expected_freq * scale_factor
-        observed_freq_scaled = bugfix_freq * scale_factor
-        expected_count.append(expected_freq_scaled)
-        observed_count.append(observed_freq_scaled)
-
-    # Adjust expected count if their sum does not match the observed sum
-    sum_observed = sum(observed_count)
-    sum_expected = sum(expected_count)
-    if sum_expected != sum_observed:
-        expected_count = [freq * (sum_observed / sum_expected) for freq in expected_count]
-
-    # Perform the chi-square test
-    chi2_stat, p_value = chisquare(f_obs=observed_count, f_exp=expected_count)
-    return chi2_stat, p_value
 
 
 def _extract_proejct_counts(file_path):

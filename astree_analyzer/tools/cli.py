@@ -107,11 +107,13 @@ def dump_comments(project_dir, output_file, commit, num_of_files):
 @click.argument("all_subtrees_input_path", type=click.Path(exists=True))
 @click.argument("bugfixes_input_path", type=click.Path(exists=True))
 @click.argument("comments_input_path", type=click.Path(exists=True))
-def analyze(all_subtrees_input_path, bugfixes_input_path, comments_input_path):
+@click.option("--output-dir", default=None)
+def analyze(all_subtrees_input_path, bugfixes_input_path, comments_input_path, output_dir):
     calculate_frequencies(
         Path(all_subtrees_input_path),
         Path(bugfixes_input_path),
         Path(comments_input_path),
+        output_dir,
     )
 
 
