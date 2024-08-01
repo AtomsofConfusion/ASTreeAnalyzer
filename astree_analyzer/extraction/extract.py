@@ -3,7 +3,8 @@ import csv
 import json
 import platform
 import tempfile
-from parser.parse import ASTSerializer, count_subtrees, hash_subtree
+from parser.parse import ASTSerializer
+from parser.projectAnalyzer import write_subtrees_to_file
 from extraction.exceptions import TextInCommentError
 import clang.cindex
 import pygit2
@@ -29,7 +30,7 @@ INCLUDE_PATTERN = r'^\s*#include\s+(<[^>]+>|"[^"]+")\s*$'
 
 def is_fix_commit(commit):
     # TODO - this is far to simple, we need to analyze the issues and PRs
-    return commit.msg.lower().startswith("fix")
+    return commit.msg.startswith("[PATCH]")
 
 
 def get_file_content_at_commit(repo, commit_hash, file_path):
@@ -66,17 +67,6 @@ def get_code_from_extent(code, extent):
         pass
     return code_lines
 
-
-def write_subtrees_counts(subtrees, ouput_file):
-    rows = []
-    subtree_counter = count_subtrees(subtrees)
-    for subtree, count in subtree_counter.items():
-        hash_val = hash_subtree(subtree)
-        rows.append([hash_val, count, subtree])
-
-    with Path(ouput_file).open("a", newline="") as file:
-        writer = csv.writer(file)
-        writer.writerows(rows)
 
 def _init_translation_unit(file_path):
     index = clang.cindex.Index.create()
@@ -376,6 +366,7 @@ def dump_bugfix_data(project_dir, output_file, num_of_commits=None):
 
     # Mining the local repository
     all_subtrees = []
+
     count = 0
     for commit in Repository(project_dir).traverse_commits():
         if num_of_commits is not None and count == num_of_commits:
@@ -389,8 +380,7 @@ def dump_bugfix_data(project_dir, output_file, num_of_commits=None):
     Path(output_file).write_text(json.dumps(fix_commits_data, indent=4))
     output_path = Path(output_file)
     subtrees_path = _get_subtrees_output_path(output_path)
-    write_subtrees_counts(all_subtrees, subtrees_path)
-
+    write_subtrees_to_file(subtrees_path, all_subtrees, output_format="json")
 
 
 def find_code_next_to_comments(file_path, serializer):
@@ -444,7 +434,7 @@ def find_code_next_to_comments(file_path, serializer):
                     relevant_code_snippets.append({
                         "line": child_start_line,
                         "node": node_text,
-                        "subtrees": subtrees
+                        "subtrees": subtrees,
                     })
 
             # Recursively search within the child
@@ -484,7 +474,7 @@ def dump_comments_data(project_dir, output_file, commit, num_of_files=None):
         }, indent=4))
 
     subtrees_path = _get_subtrees_output_path(output_path)
-    write_subtrees_counts(subtrees, subtrees_path)
+    write_subtrees_to_file(subtrees_path, subtrees, output_format="json")
 
 
 def _get_subtrees_output_path(output_path: Path):
@@ -492,7 +482,7 @@ def _get_subtrees_output_path(output_path: Path):
     output_name = output_path.stem
     subtrees_dir = output_dir / "subtrees"
     subtrees_dir.mkdir(exist_ok=True)
-    return subtrees_dir / f"{output_name}.csv"
+    return subtrees_dir / f"{output_name}.json"
 
 def parse_test_file(test_file, code, line_number):
     full_code = Path(test_file).read_text()

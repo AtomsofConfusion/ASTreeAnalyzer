@@ -48,6 +48,9 @@ def extend_cursor_kind():
 extend_cursor_kind()
 
 
+def get_node_text(node):
+    return  " ".join([token.spelling for token in node.get_tokens()])
+
 class ASTSerializer:
     def __init__(self, primitive_replacements=PRIMITIVE_REPLACEMENTS):
         self.primitive_replacements = primitive_replacements
@@ -58,14 +61,12 @@ class ASTSerializer:
         self.node_cache.clear()
         self.anon_map.clear()
         ast = parse_to_ast(filepath)
-        subtrees = self._extract_subtrees(ast)
-        return subtrees
+        return self._extract_subtrees(ast)
 
     def exctract_subtrees_for_node(self, node):
         self.node_cache.clear()
         self.anon_map.clear()
-        subtrees = self._extract_subtrees(node)
-        return subtrees
+        return self._extract_subtrees(node)
 
     def _get_node_cache(self, node):
         node_id = node.hash
@@ -183,7 +184,10 @@ class ASTSerializer:
 
             self.anon_map.clear()
             subtree = self._serialize_node(node)
-            subtrees.append(subtree)
+            subtrees.append({
+                "tree": subtree,
+                "root_node": get_node_text(node)
+            })
 
             children = self._get_node_children(node)
 

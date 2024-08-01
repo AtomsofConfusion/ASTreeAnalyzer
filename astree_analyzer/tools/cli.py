@@ -47,12 +47,17 @@ def parse_file(input_file, output_file, human_readable, profile):
     default=False,
     help="Include human-readable columns in the output.",
 )
-def parse_dir(input_dir, output_file, human_readable):
+@click.option(
+    "--output-format",
+    default="json",
+)
+def parse_dir(input_dir, output_file, human_readable, output_format):
     """Analyze the given INPUT_DIR."""
     process_directory(
         Path(input_dir),
         Path(output_file),
         include_human_readable=human_readable,
+        output_format=output_format,
     )
 
 
@@ -102,11 +107,13 @@ def dump_comments(project_dir, output_file, commit, num_of_files):
 @click.argument("all_subtrees_input_path", type=click.Path(exists=True))
 @click.argument("bugfixes_input_path", type=click.Path(exists=True))
 @click.argument("comments_input_path", type=click.Path(exists=True))
-def analyze(all_subtrees_input_path, bugfixes_input_path, comments_input_path):
+@click.option("--output-dir", default=None)
+def analyze(all_subtrees_input_path, bugfixes_input_path, comments_input_path, output_dir):
     calculate_frequencies(
         Path(all_subtrees_input_path),
         Path(bugfixes_input_path),
         Path(comments_input_path),
+        output_dir,
     )
 
 

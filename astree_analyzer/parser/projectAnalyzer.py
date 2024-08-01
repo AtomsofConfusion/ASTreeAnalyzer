@@ -1,5 +1,6 @@
 import csv
-from parser.parse import ASTSerializer, count_subtrees, deserialize_subtree, hash_subtree, print_tree, tree_to_expression
+import json
+from parser.parse import ASTSerializer, count_subtrees, deserialize_subtree, get_node_text, hash_subtree, print_tree, tree_to_expression
 from pathlib import Path
 import pandas as pd
 from multiprocessing import Process, Queue
@@ -24,7 +25,7 @@ def _convert_time(timestamp):
 
 
 def process_directory(
-    input_dir, output, include_human_readable=False, is_comment=False
+    input_dir, output, include_human_readable=False, output_format="csv"
 ):
     # Start timing
     start_time = time.time()
@@ -48,8 +49,7 @@ def process_directory(
         queue.put(None)  # Signal the consumer to stop after the producer is done
         consumer.join()
 
-    _write_to_final_output(temp_file, output)
-    temp_dir.cleanup()
+        _write_to_final_output(temp_file, output, output_format)
 
     end_time = time.time()
     print("End:", _convert_time(end_time))
@@ -64,6 +64,7 @@ def process_file(
     output: Optional[Path] = None,
     include_human_readable: Optional[bool] = False,
     profile: Optional[bool] = False,
+    output_format="csv",
 ):
     serializer = ASTSerializer()
     filename = filepath.name
@@ -116,21 +117,29 @@ def _generate_subtrees(filepaths, queue):
 
 def _write_to_temp(temp_file: Path, queue):
     while True:
-        subtrees = queue.get()
-        if subtrees is None:
+        subtrees_data = queue.get()
+        if subtrees_data is None:
             break
+        subtrees = []
+        root_nodes = []
+        hashes_to_nodes = {}
+        for subtree_node_data in subtrees_data:
+            subtrees.append(subtree_node_data["tree"])
+            root_nodes.append(subtree_node_data["root_node"])
+            hashes_to_nodes[hash_subtree(subtree_node_data["tree"])] = subtree_node_data["root_node"]
         rows = []
         subtree_counter = count_subtrees(subtrees)
         for subtree, count in subtree_counter.items():
             hash_val = hash_subtree(subtree)
-            rows.append([hash_val, count, subtree])
+            code = hashes_to_nodes[hash_val]
+            rows.append([hash_val, count, subtree, code])
 
         with temp_file.open("a", newline="") as file:
             writer = csv.writer(file)
             writer.writerows(rows)
 
 
-def _write_to_final_output(temp_file, output):
+def _write_to_final_output(temp_file, output, output_format):
     subtrees_with_count = {}
     csv.field_size_limit(2**31 - 1)
     with open(temp_file, "r", newline="") as file:
@@ -140,24 +149,81 @@ def _write_to_final_output(temp_file, output):
             count = int(row[1])
             if not hash_val in subtrees_with_count:
                 subtree = row[2]
+                code = row[3]
                 subtrees_with_count[hash_val] = {
                     "Hash": hash_val,
                     "Count": count,
                     "Serialized Subtree": subtree,
+                    "Code": code,
                 }
             else:
                 subtrees_with_count[hash_val]["Count"] = (
                     subtrees_with_count[hash_val]["Count"] + count
                 )
 
-    with open(output, "w", newline="") as csvfile:
-        fieldnames = ["Hash", "Count", "Serialized Subtree"]
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-        writer.writeheader()
-        for subtree_with_count in subtrees_with_count.values():
-            writer.writerow(subtree_with_count)
+
+    if output_format == "csv":
+        with open(output, "w", newline="") as csvfile:
+            fieldnames = ["Hash", "Count", "Serialized Subtree", "Code"]
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            writer.writeheader()
+            for subtree_with_count in subtrees_with_count.values():
+                writer.writerow(subtree_with_count)
+    elif output_format == "json":
+        data = list(subtrees_with_count.values())
+        Path(output).write_text(json.dumps(data, indent=True))
+
+    else:
+        raise Exception("Invalid output format")
+
+
 
     print(f"Results saved to {output.absolute().resolve()}")
+
+def write_subtrees_to_file(output, subtrees_data, output_format):
+    subtrees = []
+    root_nodes = []
+    hashes_to_nodes = {}
+    for subtree_node_data in subtrees_data:
+        subtrees.append(subtree_node_data["tree"])
+        root_nodes.append(subtree_node_data["root_node"])
+        hashes_to_nodes[hash_subtree(subtree_node_data["tree"])] = subtree_node_data["root_node"]
+
+    subtree_counter = count_subtrees(subtrees)
+
+    if output_format == "csv":
+        with open(output, "w", newline="") as csvfile:
+            fieldnames = ["Hash", "Count", "Serialized Subtree", "Code"]
+
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            writer.writeheader()
+            for subtree, count in subtree_counter.items():
+                hash_val = hash_subtree(subtree)
+                writer.writerow(
+                    {
+                        "Hash": hash_val,
+                        "Count": count,
+                        "Serialized Subtree": subtree,
+                        "Code": hashes_to_nodes[hash_val],
+                    }
+                )
+    elif output_format == "json":
+        data = []
+        for subtree, count in subtree_counter.items():
+            hash_val = hash_subtree(subtree)
+            data.append(
+                {
+                    "Hash":  hash_val,
+                    "Count": count,
+                    "Serialized Subtree": subtree,
+                    "Code": hashes_to_nodes[hash_val],
+                }
+            )
+        Path(output).write_text(json.dumps(data, indent=True))
+
+    else:
+        raise Exception("Invalid output format")
+
 
 
 def _write_subtrees(
