@@ -388,59 +388,73 @@ def find_code_next_to_comments(file_path, serializer):
     relevant_code_snippets = []
     root = tu.cursor
 
+    lines_children_dict = {}
+    parent_tokens = list(root.get_tokens())
+    comment_lines = []
+    # Identify lines that contain comments
+    for token in parent_tokens:
+        if token.kind == clang.cindex.TokenKind.COMMENT:
+            comment_lines.append(token.extent.end.line)
+
+    def _append_if_not_inline(node, line, is_inline):
+        node_inline = lines_children_dict.get(line)
+        if node_inline:
+            _, inline = node_inline
+            if is_inline and not inline:
+                lines_children_dict[line] = (node, is_inline)
+        else:
+            lines_children_dict[line] = (node, is_inline)
+
     def recursive_node_search(node, file_path):
-        # Check each child node
-        parent_tokens = list(node.get_tokens())
-        comment_lines = []
-        # Identify lines that contain comments
-        for token in parent_tokens:
-            if token.kind == clang.cindex.TokenKind.COMMENT:
-                comment_lines.append(token.location.line)
+        if node.location and node.location.file:
+            if (
+                Path(node.location.file.name).as_posix()
+                != Path(file_path).as_posix()
+            ):
+                return
 
-        # Check each child node
+        node_start_line = node.extent.start.line
+
+        if node.kind not in [
+            clang.cindex.CursorKind.TYPEDEF_DECL,
+            clang.cindex.CursorKind.FUNCTION_DECL,
+            clang.cindex.CursorKind.CXX_METHOD,
+            clang.cindex.CursorKind.FUNCTION_TEMPLATE,
+        ]:
+
+            # if there is a comment on the same line as some code
+            # but there's also a line just below, only the code
+            # that is on the same line as the comment should be returned
+            if node_start_line in comment_lines:
+                _append_if_not_inline(node, node_start_line, True)
+            elif node_start_line - 1 in comment_lines:
+                _append_if_not_inline(node, node_start_line - 1, False)
+        else:
+            if node_start_line in comment_lines:
+                comment_lines.remove(node_start_line)
+            elif node_start_line - 1 in comment_lines:
+                comment_lines.remove(node_start_line - 1)
+
         for child in node.get_children():
-            if child.location and child.location.file:
-                if (
-                    Path(child.location.file.name).as_posix()
-                    != Path(file_path).as_posix()
-                ):
-                    continue
-
-            if child.kind not in [
-                clang.cindex.CursorKind.TYPEDEF_DECL,
-                clang.cindex.CursorKind.FUNCTION_DECL,
-                clang.cindex.CursorKind.CXX_METHOD,
-                clang.cindex.CursorKind.FUNCTION_TEMPLATE,
-            ]:
-                child_start_line = child.extent.start.line
-
-                # Check if the line before the child's start contains a comment
-                if (
-                    child_start_line - 1 in comment_lines
-                    or child_start_line in comment_lines
-                ):
-                    if child_start_line - 1 in comment_lines:
-                        comment_lines.remove(child_start_line - 1)
-                    else:
-                        comment_lines.remove(child_start_line)
-
-                    # If found, capture the entire content of the child node
-                    node_part = _get_relavant_node_part(child)
-                    node_text = " ".join([token.spelling for token in node_part.get_tokens()])
-                    if len(node_text) > 500:
-                        print(f"{file_path}, line {child_start_line} is porbably not being parsed correctly. Skipping")
-                        continue
-                    subtrees = serializer.exctract_subtrees_for_node(node_part)
-                    relevant_code_snippets.append({
-                        "line": child_start_line,
-                        "node": node_text,
-                        "subtrees": subtrees,
-                    })
-
             # Recursively search within the child
             recursive_node_search(child, file_path)
 
     recursive_node_search(root, file_path)
+
+    for line, child_inline in lines_children_dict.items():
+        child, _ = child_inline
+        # If found, capture the entire content of the child node
+        node_part = _get_relavant_node_part(child)
+        node_text = " ".join([token.spelling for token in node_part.get_tokens()])
+        if len(node_text) > 500:
+            print(f"{file_path}, line {line} is porbably not being parsed correctly. Skipping")
+            continue
+        subtrees = serializer.exctract_subtrees_for_node(node_part)
+        relevant_code_snippets.append({
+            "line": line,
+            "node": node_text,
+            "subtrees": subtrees,
+        })
     return relevant_code_snippets
 
 
