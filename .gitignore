@@ -166,4 +166,5 @@ cython_debug/
 .DS_Store
 
 libs/**/*.dll
+libs/**/*.h
 output/*
