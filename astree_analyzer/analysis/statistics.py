@@ -9,6 +9,8 @@ import pandas as pd
 post_inc_pattern = r'CursorKind\.UNARY_OPERATOR_\+\+_post'
 
 
+def _show_node(code):
+    return "struct" not in code and _contains_post_inc_dec_operator(code)
 
 def calculate_frequencies(all_subtrees_input_path, bugfixes_input_path, comments_input_path, output_dir=None):
     bugfix_data = _extract_data_from_json(bugfixes_input_path)
@@ -57,6 +59,7 @@ def calculate_frequencies(all_subtrees_input_path, bugfixes_input_path, comments
     expected_bugfix = {k: (v / total_project) * total_bugfix for k, v in project_frequencies.items()}
     expected_comment = {k: (v / total_project) * total_comment for k, v in project_frequencies.items()}
 
+
     # Calculating deviation ratios for bug fixes and comments
     deviation_ratios_bugfix = {
         k: math.log((bugfix_frequencies[k] / expected_bugfix[k]) + 1)
@@ -68,6 +71,15 @@ def calculate_frequencies(all_subtrees_input_path, bugfixes_input_path, comments
         if k in expected_comment and expected_comment[k] != 0 and comment_frequencies[k] > expected_comment[k] else 0
         for k in comment_frequencies
     }
+
+
+    for k in dict(deviation_ratios_bugfix):
+        if k in bugfix_code and not _show_node(bugfix_code[k]) or k in comment_code and not _show_node(comment_code[k]) or \
+            bugfix_frequencies.get(k, 0) + comment_frequencies.get(k, 0) < 5:
+            deviation_ratios_bugfix.pop(k)
+            deviation_ratios_comments.pop(k)
+            bugfix_frequencies.pop(k)
+            comment_frequencies.pop(k)
 
     # Prepare for plotting
     bugfix_values = list(deviation_ratios_bugfix.values())
@@ -133,7 +145,7 @@ def calculate_frequencies(all_subtrees_input_path, bugfixes_input_path, comments
         title='Comparison of Subtree Deviations in Bug Fixes and Comments',
         size='Size',
         color="Color",
-        size_max=50
+        size_max=50,
     )
 
     fig.show()
@@ -188,5 +200,3 @@ def _extract_data_from_json(file_path):
     return [
         item for item in subtrees_data
     ]
-#  if "struct" not in item["Serialized Subtree"] and \
-#            item["Count"] > 5 and item["Count"] < 1000 and has_children(item["Serialized Subtree"])

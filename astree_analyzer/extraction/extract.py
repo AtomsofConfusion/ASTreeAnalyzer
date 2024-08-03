@@ -30,7 +30,9 @@ INCLUDE_PATTERN = r'^\s*#include\s+(<[^>]+>|"[^"]+")\s*$'
 
 def is_fix_commit(commit):
     # TODO - this is far to simple, we need to analyze the issues and PRs
-    return commit.msg.startswith("[PATCH]")
+    # git specific
+    regex = re.compile(r'^.*: Fix .*', re.IGNORECASE)
+    return regex.match(commit.msg)
 
 
 def get_file_content_at_commit(repo, commit_hash, file_path):
@@ -373,6 +375,7 @@ def dump_bugfix_data(project_dir, output_file, num_of_commits=None):
             break
         if is_fix_commit(commit):
             count += 1
+            print(commit.hash)
             removed_code, subtrees = extract_removed_code(repo, commit)
             all_subtrees.extend(subtrees)
             if removed_code:
