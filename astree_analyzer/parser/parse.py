@@ -18,7 +18,9 @@ IDENTIFIER_KINDS = {
     clang.cindex.CursorKind.PARM_DECL,
     clang.cindex.CursorKind.FIELD_DECL,
     clang.cindex.CursorKind.FUNCTION_DECL,
-    clang.cindex.CursorKind.DECL_REF_EXPR
+    clang.cindex.CursorKind.DECL_REF_EXPR,
+    clang.cindex.CursorKind.STRUCT_DECL,
+    clang.cindex.CursorKind.TYPE_REF,
 }
 
 # Extended beyond just primitives
@@ -49,7 +51,7 @@ extend_cursor_kind()
 
 
 def get_node_text(node):
-    return  " ".join([token.spelling for token in node.get_tokens()])
+    return  " "
 
 class ASTSerializer:
     def __init__(self, primitive_replacements=PRIMITIVE_REPLACEMENTS):
@@ -114,7 +116,8 @@ class ASTSerializer:
                 anon_name = f"var_{len(self.anon_map)}"
                 self.anon_map[node_spelling] = anon_name
 
-            node_rep = f"{anon_name}_{node_type_spelling}"
+            node_rep = f"{anon_name}_{node_type_spelling}
+            # node_rep = f"{anon_name}"
 
             index = node_type_spelling.find('[')
             if index != -1:
@@ -151,6 +154,7 @@ class ASTSerializer:
                         else:
                             operator = first_token_spelling
                         node_rep = f"{node_rep}_{operator}"
+
                 elif node_kind == clang.cindex.CursorKind.CALL_EXPR:
                     node_rep = f"{node_rep}_{node.displayname}"
 
