@@ -116,7 +116,7 @@ class ASTSerializer:
                 anon_name = f"var_{len(self.anon_map)}"
                 self.anon_map[node_spelling] = anon_name
 
-            node_rep = f"{anon_name}_{node_type_spelling}
+            node_rep = f"{anon_name}_{node_type_spelling}"
             # node_rep = f"{anon_name}"
 
             index = node_type_spelling.find('[')
