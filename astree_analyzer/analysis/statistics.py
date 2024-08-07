@@ -15,12 +15,17 @@ def _show_node(code):
 def calculate_frequencies(all_subtrees_input_path, bugfixes_input_path, comments_input_path, output_dir=None):
     bugfix_data = _extract_data_from_json(bugfixes_input_path)
     comment_data  = _extract_data_from_json(comments_input_path)
-    project_frequencies = _extract_proejct_counts(all_subtrees_input_path)
+    project_frequencies = _extract_data_from_json(all_subtrees_input_path)
     # comments_input_path = _calculate_frequencies(bugfixes_input_path)
 
     bugfix_frequencies = {
         item["Hash"]: item["Count"]
         for item in bugfix_data
+    }
+
+    project_frequencies = {
+        item["Hash"]: item["Count"]
+        for item in project_frequencies
     }
 
     comment_frequencies = {
