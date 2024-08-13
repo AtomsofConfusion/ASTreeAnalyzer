@@ -3,7 +3,7 @@ import csv
 import json
 import platform
 import tempfile
-from parser.parse import ASTSerializer
+from parser.parse import ASTSerializer, tree_to_expression
 from parser.projectAnalyzer import write_subtrees_to_file
 from extraction.exceptions import TextInCommentError
 import clang.cindex
@@ -13,8 +13,6 @@ from pydriller import Repository
 from pathlib import Path
 
 # Path to your local Git repository
-
-
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 CONFIG = json.loads((PROJECT_ROOT / "config.json").read_text())
 
@@ -27,13 +25,11 @@ clang.cindex.Config.set_library_file(library_file)
 
 INCLUDE_PATTERN = r'^\s*#include\s+(<[^>]+>|"[^"]+")\s*$'
 
-
 def is_fix_commit(commit):
-    # TODO - this is far to simple, we need to analyze the issues and PRs
+    # TODO - this is far too simple, we need to analyze the issues and PRs
     # git specific
     regex = re.compile(r'^.*: Fix .*', re.IGNORECASE)
     return regex.match(commit.msg)
-
 
 def get_file_content_at_commit(repo, commit_hash, file_path):
     commit = repo.get(commit_hash)
@@ -43,13 +39,11 @@ def get_file_content_at_commit(repo, commit_hash, file_path):
     content = remove_conditional_definitions(content)
     return content
 
-
 def get_previous_commit(repo, commit):
     walker = repo.walk(commit, pygit2.GIT_SORT_TOPOLOGICAL | pygit2.GIT_SORT_TIME)
     next(walker)
     parent_commit = next(walker)
     return parent_commit.id
-
 
 def get_code_from_extent(code, extent):
     lines = code.splitlines()
@@ -69,7 +63,6 @@ def get_code_from_extent(code, extent):
         pass
     return code_lines
 
-
 def _init_translation_unit(file_path):
     index = clang.cindex.Index.create()
     include_paths = CONFIG.get("include_paths", [])
@@ -88,37 +81,19 @@ def _init_translation_unit(file_path):
     tu = index.parse(str(file_path), args=args)
     return tu
 
-
 def normalize_code(text):
-    """
-    Normalize code by removing extra spaces around punctuation and making it lowercase.
-    This function also standardizes common variations in array declarations.
-    """
-    # text = text.replace('\t', ' ').replace('\n', ' ')
-    # text = re.sub(r'\s+', ' ', text)  # Replace multiple spaces with one
-    # text = re.sub(r'\s*\[\s*', '[', text)  # Remove spaces around [
-    # text = re.sub(r'\s*\]\s*', ']', text)  # Remove spaces around ]
-    # text = re.sub(r'\s*\(\s*', '(', text)  # remove spaces around parentheses
-    # text = re.sub(r'\s*\)\s*', ')', text)  # remove spaces around parentheses
-    # text = re.sub(r'\s*\)\s*', '*', text)  # remove spaces around *
     return text.replace(" ", "")
-
 
 def is_text_in_comment(node, search_text, line_number=0):
     search_text = normalize_code(search_text)
     for token in node.get_tokens():
         if token.kind == clang.cindex.TokenKind.COMMENT:
-            # Normalize spaces and check if the search text is in the comment
             normalized_comment = normalize_code(token.spelling)
             if search_text in normalized_comment:
                 return True
     return False
 
-
 def contains_expression(node, expression, line_number):
-    """
-    Check if the normalized node text contains the normalized expression.
-    """
     if line_number < node.extent.start.line or line_number > node.extent.end.line:
         return False
     node_text = " ".join([token.spelling for token in node.get_tokens()])
@@ -128,39 +103,19 @@ def contains_expression(node, expression, line_number):
     normalized_expression = normalize_code(expression)
     return normalized_expression in normalized_node_text
 
-
 def find_smallest_containing_node(
     node, expression, line_number, ancestors, best_match=None
 ):
-    """
-    Recursively find the smallest node that contains the given expression.
-    """
     if contains_expression(node, expression, line_number):
         ancestors.append(node)
         best_match = node
-        # print("--------------------")
-        # node_text = " ".join([token.spelling for token in node.get_tokens()])
-        # print(node_text)
-        # print("**************************88")
         for child in node.get_children():
-            # node_text = " ".join([token.spelling for token in child.get_tokens()])
-            # print(node_text)
-            # print("***************8")
             best_match = find_smallest_containing_node(
                 child, expression, line_number, ancestors, best_match
             )
     return best_match
 
-
 def _extract_headers(code, repo, commit, processed, invalid):
-    """
-    Recursively extract all unique header file names from the C code.
-
-    :param code: C code from which to extract header files.
-    :param base_path: The base directory where header files are searched (as a Path object).
-    :param processed: A set to keep track of processed header files to avoid cyclic includes.
-    :return: A set of all header files included in the code, directly or indirectly.
-    """
     header_pattern = re.compile(r'#include\s+"([^"]+)"')
     headers = set(header_pattern.findall(code))
     all_headers = set(headers)
@@ -180,14 +135,12 @@ def _extract_headers(code, repo, commit, processed, invalid):
             all_headers.update(included_headers)
     return all_headers
 
-
 def _save_file_to_temp(repo, output_dir, commit, file_path):
     full_code = get_file_content_at_commit(repo, commit, file_path)
     file_path = Path(output_dir, file_path)
     file_path.parent.mkdir(exist_ok=True, parents=True)
     file_path.write_text(full_code)
     return full_code
-
 
 def _save_headers_to_temp(full_code, output_dir, repo, commit, loaded_headers, invalid_headers):
     headers = _extract_headers(full_code, repo, commit, loaded_headers, invalid_headers)
@@ -202,26 +155,19 @@ def _save_headers_to_temp(full_code, output_dir, repo, commit, loaded_headers, i
         print(f"Could not load {header} at {commit} due to {e}. Skipping")
     return headers
 
-
 def _run_diagnostics(tu, file_name):
     if len(tu.diagnostics):
         print(f"Error(s) occurred while parsing {file_name}")
         for diag in tu.diagnostics:
             print(diag)
-        # if "undeclared identifier" in diag.spelling:
-        #     print(f"Undefined Identifier in {file_name}: {diag.spelling}")
-
 
 def remove_conditional_definitions(content):
     return re.sub(
         r"^#ifdef.*?$\n|^#ifndef.*?$\n|^#endif.*?$\n", "\n", content, flags=re.M
     )
 
-
 def get_function_or_statement_context(file_path, code, source_code, line_number):
     tu = _init_translation_unit(file_path)
-    # _run_diagnostics(tu, file_path)
-
     root_node = tu.cursor
     ancestors = []
     try:
@@ -234,20 +180,9 @@ def get_function_or_statement_context(file_path, code, source_code, line_number)
         print(f"Could not parse {file_path} due to {e}. Skipping")
         return None, None
 
-    # if node is not None:
-    #     ancestors.reverse()
-    #     # Ensure we capture broader context by moving up the AST if needed
-    #     for parent_node in ancestors:
-    #         if parent_node.kind in (clang.cindex.CursorKind.FUNCTION_DECL,
-    #                                    clang.cindex.CursorKind.CXX_METHOD,
-    #                                    clang.cindex.CursorKind.STRUCT_DECL,
-    #                                    clang.cindex.CursorKind.CLASS_DECL):
-    #             node = parent_node
-    #             break
     if node is not None and node != root_node:
         return node, get_code_from_extent(code, node.extent)
     return None, None
-
 
 def extract_removed_code(repo, commit):
     removed_code = []
@@ -302,10 +237,12 @@ def extract_removed_code(repo, commit):
                         )
                         if containing_node is not None:
                             if len(node_text) > 500:
-                                print(f"{file_path}, line {line_number} is porbably not being parsed correctly. Skipping")
+                                print(f"{file_path}, line {line_number} is probably not being parsed correctly. Skipping")
                                 continue
                             subtrees = serializer.exctract_subtrees_for_node(containing_node)
-                            all_subtrees.extend(subtrees)
+                            for subtree in subtrees:
+                                subtree_expr = tree_to_expression(subtree)
+                                all_subtrees.append(subtree_expr)
                             removed_line_data[line_number] = {"context": node_text, "code": code}
                     except TextInCommentError:
                         continue
@@ -317,7 +254,6 @@ def extract_removed_code(repo, commit):
                     }
                 )
     return removed_code, all_subtrees
-
 
 def extract_commented_code(repo, project_dir, commit, serializer, num_of_files=None):
     loaded_headers = defaultdict(list)
@@ -353,10 +289,13 @@ def extract_commented_code(repo, project_dir, commit, serializer, num_of_files=N
             try:
                 comments = find_code_next_to_comments(file_path, serializer=serializer)
             except Exception as e:
-                print(f"An error occurred while finding comment sof {file_path}. Skipping")
+                print(f"An error occurred while finding comments for {file_path}. Skipping")
                 continue
             for comment_data in comments:
-                all_subtrees.extend(comment_data.pop("subtrees"))
+                subtrees = comment_data.pop("subtrees")
+                subtree_exprs = [tree_to_expression(subtree) for subtree in subtrees]
+                comment_data["subtrees"] = subtree_exprs
+                all_subtrees.extend(subtree_exprs)
                 comments_line_data.setdefault(str(relative_path), []).append(comment_data)
 
     return comments_line_data, all_subtrees
@@ -366,7 +305,6 @@ def dump_bugfix_data(project_dir, output_file, num_of_commits=None):
     repo = pygit2.Repository(project_dir)
     fix_commits_data = {}
 
-    # Mining the local repository
     all_subtrees = []
 
     count = 0
@@ -385,7 +323,6 @@ def dump_bugfix_data(project_dir, output_file, num_of_commits=None):
     subtrees_path = _get_subtrees_output_path(output_path)
     write_subtrees_to_file(subtrees_path, all_subtrees, output_format="json")
 
-
 def find_code_next_to_comments(file_path, serializer):
     tu = _init_translation_unit(file_path)
     relevant_code_snippets = []
@@ -394,7 +331,6 @@ def find_code_next_to_comments(file_path, serializer):
     lines_children_dict = {}
     parent_tokens = list(root.get_tokens())
     comment_lines = []
-    # Identify lines that contain comments
     for token in parent_tokens:
         if token.kind == clang.cindex.TokenKind.COMMENT:
             comment_lines.append(token.extent.end.line)
@@ -425,9 +361,6 @@ def find_code_next_to_comments(file_path, serializer):
             clang.cindex.CursorKind.FUNCTION_TEMPLATE,
         ]:
 
-            # if there is a comment on the same line as some code
-            # but there's also a line just below, only the code
-            # that is on the same line as the comment should be returned
             if node_start_line in comment_lines:
                 _append_if_not_inline(node, node_start_line, True)
             elif node_start_line - 1 in comment_lines:
@@ -439,27 +372,25 @@ def find_code_next_to_comments(file_path, serializer):
                 comment_lines.remove(node_start_line - 1)
 
         for child in node.get_children():
-            # Recursively search within the child
             recursive_node_search(child, file_path)
 
     recursive_node_search(root, file_path)
 
     for line, child_inline in lines_children_dict.items():
         child, _ = child_inline
-        # If found, capture the entire content of the child node
         node_part = _get_relavant_node_part(child)
         node_text = " ".join([token.spelling for token in node_part.get_tokens()])
         if len(node_text) > 500:
-            print(f"{file_path}, line {line} is porbably not being parsed correctly. Skipping")
+            print(f"{file_path}, line {line} is probably not being parsed correctly. Skipping")
             continue
         subtrees = serializer.exctract_subtrees_for_node(node_part)
+        subtree_exprs = [tree_to_expression(subtree) for subtree in subtrees]
         relevant_code_snippets.append({
             "line": line,
             "node": node_text,
-            "subtrees": subtrees,
+            "subtrees": subtree_exprs,
         })
     return relevant_code_snippets
-
 
 def _get_relavant_node_part(node):
     control_structures = [
@@ -473,8 +404,6 @@ def _get_relavant_node_part(node):
     if node.kind == clang.cindex.CursorKind.DO_STMT:
         return list(node.get_children())[-1]
     return node
-
-
 
 def dump_comments_data(project_dir, output_file, commit, num_of_files=None):
     repo = pygit2.Repository(project_dir)
@@ -492,7 +421,6 @@ def dump_comments_data(project_dir, output_file, commit, num_of_files=None):
 
     subtrees_path = _get_subtrees_output_path(output_path)
     write_subtrees_to_file(subtrees_path, subtrees, output_format="json")
-
 
 def _get_subtrees_output_path(output_path: Path):
     output_dir = output_path.parent

@@ -205,6 +205,7 @@ def write_subtrees_to_file(output, subtrees_data, output_format):
                         "Count": count,
                         "Serialized Subtree": subtree,
                         "Code": hashes_to_nodes[hash_val],
+                        "Expression": tree_to_expression(subtree)
                     }
                 )
     elif output_format == "json":
@@ -217,6 +218,7 @@ def write_subtrees_to_file(output, subtrees_data, output_format):
                     "Count": count,
                     "Serialized Subtree": subtree,
                     "Code": hashes_to_nodes[hash_val],
+                    "Expression": tree_to_expression(subtree)
                 }
             )
         Path(output).write_text(json.dumps(data, indent=True))
