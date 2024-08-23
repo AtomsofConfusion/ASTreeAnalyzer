@@ -39,7 +39,7 @@ def get_file_content_at_commit(repo, commit_hash, file_path):
     commit = repo.get(commit_hash)
     tree = commit.tree
     blob = tree[file_path].data
-    content = blob.decode("utf-8")
+    content = blob.decode("utf-8", errors='replace') # should find a better solution for this one 
     content = remove_conditional_definitions(content)
     return content
 
@@ -185,7 +185,7 @@ def _save_file_to_temp(repo, output_dir, commit, file_path):
     full_code = get_file_content_at_commit(repo, commit, file_path)
     file_path = Path(output_dir, file_path)
     file_path.parent.mkdir(exist_ok=True, parents=True)
-    file_path.write_text(full_code)
+    file_path.write_text(full_code, encoding='utf-8')  # specify encoding
     return full_code
 
 
