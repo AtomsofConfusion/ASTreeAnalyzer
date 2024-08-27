@@ -25,7 +25,7 @@ def _convert_time(timestamp):
 
 
 def process_directory(
-    input_dir, output, include_human_readable=False, output_format="csv"
+    input_dir, output, include_human_readable=False, output_format="json"
 ):
     # Start timing
     start_time = time.time()
@@ -38,7 +38,7 @@ def process_directory(
         queue = Queue()
         # Start the subtree generator process
         filepaths = list(input_dir.rglob("*.c"))
-        producer = Process(target=_generate_subtrees, args=(filepaths, queue))
+        producer = Process(target=_generate_subtrees, args=(filepaths, input_dir,  queue))
         # Start the writer process
         consumer = Process(target=_write_to_temp, args=(temp_file, queue))
 
@@ -66,7 +66,7 @@ def process_file(
     profile: Optional[bool] = False,
     output_format="csv",
 ):
-    serializer = ASTSerializer()
+    serializer = ASTSerializer(project_root=filepath.parent)
     filename = filepath.name
 
     try:
@@ -101,14 +101,14 @@ def process_file(
         raise
 
 
-def _generate_subtrees(filepaths, queue):
+def _generate_subtrees(filepaths, input_dir, queue):
     for filepath in tqdm(filepaths, desc="Processing files"):
         filepath = Path(filepath)
-        serializer = ASTSerializer()
+        serializer = ASTSerializer(project_root=input_dir)
         filename = filepath.name
         try:
-            subtrees = serializer.extract_subrees_for_file(filepath)
-            queue.put(subtrees)
+            subtrees, root_subtrees = serializer.extract_subrees_for_file(filepath)
+            queue.put((subtrees, root_subtrees))
         except Exception as e:
             print(f"Error processing {filename}: {e}")
             raise
@@ -120,19 +120,15 @@ def _write_to_temp(temp_file: Path, queue):
         subtrees_data = queue.get()
         if subtrees_data is None:
             break
-        subtrees = []
-        root_nodes = []
-        hashes_to_nodes = {}
-        for subtree_node_data in subtrees_data:
-            subtrees.append(subtree_node_data["tree"])
-            root_nodes.append(subtree_node_data["root_node"])
-            hashes_to_nodes[hash_subtree(subtree_node_data["tree"])] = subtree_node_data["root_node"]
+        subtrees, root_subtrees = subtrees_data
+        root_subtrees_count = {}
         rows = []
+        for subtree in root_subtrees:
+            root_subtrees_count[subtree] = root_subtrees_count.get(subtree, 0) + 1
         subtree_counter = count_subtrees(subtrees)
         for subtree, count in subtree_counter.items():
             hash_val = hash_subtree(subtree)
-            code = hashes_to_nodes[hash_val]
-            rows.append([hash_val, count, subtree, code])
+            rows.append([hash_val, count, subtree, root_subtrees_count.get(hash_val, 0)])
 
         with temp_file.open("a", newline="") as file:
             writer = csv.writer(file)
@@ -147,24 +143,27 @@ def _write_to_final_output(temp_file, output, output_format):
         for row in reader:
             hash_val = row[0]
             count = int(row[1])
+            root_count = int(row[3])
             if not hash_val in subtrees_with_count:
                 subtree = row[2]
-                code = row[3]
                 subtrees_with_count[hash_val] = {
                     "Hash": hash_val,
                     "Count": count,
                     "Serialized Subtree": subtree,
-                    "Code": code,
+                    "Root Count":root_count
                 }
             else:
                 subtrees_with_count[hash_val]["Count"] = (
                     subtrees_with_count[hash_val]["Count"] + count
                 )
+                subtrees_with_count[hash_val]["Root Count"] = (
+                    subtrees_with_count[hash_val]["Root Count"] + root_count
+                )
 
 
     if output_format == "csv":
         with open(output, "w", newline="") as csvfile:
-            fieldnames = ["Hash", "Count", "Serialized Subtree", "Code"]
+            fieldnames = ["Hash", "Count", "Serialized Subtree", "Root Count"]
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
             writer.writeheader()
             for subtree_with_count in subtrees_with_count.values():
@@ -180,20 +179,13 @@ def _write_to_final_output(temp_file, output, output_format):
 
     print(f"Results saved to {output.absolute().resolve()}")
 
-def write_subtrees_to_file(output, subtrees_data, output_format):
-    subtrees = []
-    root_nodes = []
-    hashes_to_nodes = {}
-    for subtree_node_data in subtrees_data:
-        subtrees.append(subtree_node_data["tree"])
-        root_nodes.append(subtree_node_data["root_node"])
-        hashes_to_nodes[hash_subtree(subtree_node_data["tree"])] = subtree_node_data["root_node"]
+def write_subtrees_to_file(output, subtrees, root_subtrees, output_format):
 
     subtree_counter = count_subtrees(subtrees)
 
     if output_format == "csv":
         with open(output, "w", newline="") as csvfile:
-            fieldnames = ["Hash", "Count", "Serialized Subtree", "Code"]
+            fieldnames = ["Hash", "Count", "Serialized Subtree", "Root Count"]
 
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
             writer.writeheader()
@@ -204,8 +196,7 @@ def write_subtrees_to_file(output, subtrees_data, output_format):
                         "Hash": hash_val,
                         "Count": count,
                         "Serialized Subtree": subtree,
-                        "Code": hashes_to_nodes[hash_val],
-                        "Expression": tree_to_expression(subtree)
+                        "Root Count": root_subtrees.get(hash_val, 0)
                     }
                 )
     elif output_format == "json":
@@ -217,8 +208,7 @@ def write_subtrees_to_file(output, subtrees_data, output_format):
                     "Hash":  hash_val,
                     "Count": count,
                     "Serialized Subtree": subtree,
-                    "Code": hashes_to_nodes[hash_val],
-                    "Expression": tree_to_expression(subtree)
+                    "Root Count": root_subtrees.get(hash_val, 0)
                 }
             )
         Path(output).write_text(json.dumps(data, indent=True))
