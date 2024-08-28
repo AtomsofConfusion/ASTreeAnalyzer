@@ -35,7 +35,7 @@ PRIMITIVE_REPLACEMENTS = {
 }
 
 BINARY_OPERATORS = {'+', '-', '*', '/', '%', '<', '>', '<=', '>=', '==', '!=', '&', '|', '^', '&&', '||', '=', '+=', '-=', '*=', '/=', '%=', '&=', '|=', '^='}
-UNARY_OPERATORS = {'++', '--', '+', '-', '!', '~'}
+UNARY_OPERATORS = {'++', '--', '+', '-', '!', '~', '&', '*'}
 
 clang.cindex.Config.set_library_file(library_file)
 

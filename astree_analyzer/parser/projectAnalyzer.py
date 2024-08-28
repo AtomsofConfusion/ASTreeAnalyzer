@@ -27,6 +27,7 @@ def _convert_time(timestamp):
 def process_directory(
     input_dir, output, include_human_readable=False, output_format="json"
 ):
+
     # Start timing
     start_time = time.time()
     print("Start:", _convert_time(start_time))
