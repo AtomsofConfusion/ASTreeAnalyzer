@@ -35,6 +35,11 @@ PRIMITIVE_REPLACEMENTS = {
 }
 
 BINARY_OPERATORS = {'+', '-', '*', '/', '%', '<', '>', '<=', '>=', '==', '!=', '&', '|', '^', '&&', '||', '=', '+=', '-=', '*=', '/=', '%=', '&=', '|=', '^='}
+ASSIGNMENTS_OPERATORS = {'=', '+=', '-=', '*=', '/=', '%=', '&=', '|=', '^='}
+COMPARISON_OPERATORS = {'<', '>', '<=', '>=', '==', '!='}
+BITWISE_OPERATORS =  { '&', '|', '^', '<<', '>>'}
+ARITHMETIC_OPERATORS = {'+', '-', '*', '/', '%'}
+LOGICAL_OPERATORS = {'&&', '||'}
 UNARY_OPERATORS = {'++', '--', '+', '-', '!', '~', '&', '*'}
 
 clang.cindex.Config.set_library_file(library_file)
@@ -152,7 +157,18 @@ class ASTSerializer:
                     for token in node.get_tokens():
                         token_spelling = token.spelling
                         if token_spelling in BINARY_OPERATORS:
-                            operator = token_spelling
+                            if token_spelling in ASSIGNMENTS_OPERATORS:
+                                operator = '='
+                            elif token_spelling in BINARY_OPERATORS:
+                                operator = '&'
+                            elif token_spelling in COMPARISON_OPERATORS:
+                                operator = '>'
+                            elif token_spelling in ARITHMETIC_OPERATORS:
+                                operator = '+'
+                            elif token_spelling in LOGICAL_OPERATORS:
+                                operator = '&&'
+                            else:
+                                operator = token_spelling
                             break
                     if operator:
                         node_rep = f"{node_rep}_{operator}"
