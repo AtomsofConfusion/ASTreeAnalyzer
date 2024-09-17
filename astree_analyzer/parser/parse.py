@@ -1,3 +1,4 @@
+import json
 import platform
 import csv
 import clang.cindex
@@ -12,6 +13,7 @@ if platform.system() ==  "Windows":
 else:
     library_file = '/opt/homebrew/opt/llvm/lib/libclang.dylib'
 
+CONFIG = json.loads((PROJECT_ROOT / "config.json").read_text())
 
 IDENTIFIER_KINDS = {
     clang.cindex.CursorKind.VAR_DECL,
@@ -33,7 +35,12 @@ PRIMITIVE_REPLACEMENTS = {
 }
 
 BINARY_OPERATORS = {'+', '-', '*', '/', '%', '<', '>', '<=', '>=', '==', '!=', '&', '|', '^', '&&', '||', '=', '+=', '-=', '*=', '/=', '%=', '&=', '|=', '^='}
-UNARY_OPERATORS = {'++', '--', '+', '-', '!', '~'}
+ASSIGNMENTS_OPERATORS = {'=', '+=', '-=', '*=', '/=', '%=', '&=', '|=', '^='}
+COMPARISON_OPERATORS = {'<', '>', '<=', '>=', '==', '!='}
+BITWISE_OPERATORS =  { '&', '|', '^', '<<', '>>'}
+ARITHMETIC_OPERATORS = {'+', '-', '*', '/', '%'}
+LOGICAL_OPERATORS = {'&&', '||'}
+UNARY_OPERATORS = {'++', '--', '+', '-', '!', '~', '&', '*'}
 
 clang.cindex.Config.set_library_file(library_file)
 
@@ -54,10 +61,11 @@ def get_node_text(node):
     return  " "
 
 class ASTSerializer:
-    def __init__(self, primitive_replacements=PRIMITIVE_REPLACEMENTS):
+    def __init__(self, primitive_replacements=PRIMITIVE_REPLACEMENTS, project_root=None):
         self.primitive_replacements = primitive_replacements
         self.node_cache = {}
         self.anon_map = {}
+        self.project_root = project_root
 
     def extract_subrees_for_file(self, filepath):
         self.node_cache.clear()
@@ -68,7 +76,8 @@ class ASTSerializer:
     def exctract_subtrees_for_node(self, node):
         self.node_cache.clear()
         self.anon_map.clear()
-        return self._extract_subtrees(node)
+        subtrees, root_subtrees = self._extract_subtrees(node)
+        return subtrees, root_subtrees
 
     def _get_node_cache(self, node):
         node_id = node.hash
@@ -93,13 +102,20 @@ class ASTSerializer:
             try:
                 node_kind = node.kind
             except ValueError as e:
-                # Extract the kind_id from the exception message
                 kind_id = int(str(e).split()[-1])
-                # Dynamically add this kind to the CursorKind mappings if not present
                 if kind_id not in clang.cindex.CursorKind._kinds:
                     clang.cindex.CursorKind._kinds[kind_id] = ExtendedCursorKind.UNKNOWN_TEMPLATE_ARGUMENT_KIND
                 node_kind = clang.cindex.CursorKind.from_id(kind_id)
             node_data["kind"] = node_kind
+
+        # If the node is an UNEXPOSED_EXPR, serialize only its children
+        if node_kind == clang.cindex.CursorKind.UNEXPOSED_EXPR:
+            children = self._get_node_children(node)
+            if len(children) == 1:
+                return self._serialize_node(children[0])
+            else:
+                # exclude unexposed expr
+                return f",".join(self._serialize_node(child) for child in children)
 
         if node_kind == ExtendedCursorKind.UNKNOWN_TEMPLATE_ARGUMENT_KIND:
             node_rep = "UnknownTemplateArgument"
@@ -116,15 +132,18 @@ class ASTSerializer:
                 anon_name = f"var_{len(self.anon_map)}"
                 self.anon_map[node_spelling] = anon_name
 
-            node_rep = f"{anon_name}_{node_type_spelling}"
-            # node_rep = f"{anon_name}"
+            # ignore types
+            # node_rep = f"{anon_name}_{node_type_spelling}"
+            node_rep = anon_name
 
             index = node_type_spelling.find('[')
             if index != -1:
-                base_type = node_type_spelling[:index]
                 subscript = node_type_spelling[index + 1:]
-                subscript = 0  # interpret as an integer literal for anonymization
-                node_rep = f"{anon_name}_{base_type}[{subscript}]"
+                subscript = 0
+                # ignore types
+                # base_type = node_type_spelling[:index]
+                # node_rep = f"{anon_name}_{base_type}[{subscript}]"
+                node_rep = f"{anon_name}[{subscript}]"
         else:
             cached_node_rep = node_data.get("node_rep")
 
@@ -138,7 +157,18 @@ class ASTSerializer:
                     for token in node.get_tokens():
                         token_spelling = token.spelling
                         if token_spelling in BINARY_OPERATORS:
-                            operator = token_spelling
+                            if token_spelling in ASSIGNMENTS_OPERATORS:
+                                operator = '='
+                            elif token_spelling in BINARY_OPERATORS:
+                                operator = '&'
+                            elif token_spelling in COMPARISON_OPERATORS:
+                                operator = '>'
+                            elif token_spelling in ARITHMETIC_OPERATORS:
+                                operator = '+'
+                            elif token_spelling in LOGICAL_OPERATORS:
+                                operator = '&&'
+                            else:
+                                operator = token_spelling
                             break
                     if operator:
                         node_rep = f"{node_rep}_{operator}"
@@ -156,7 +186,7 @@ class ASTSerializer:
                         node_rep = f"{node_rep}_{operator}"
 
                 elif node_kind == clang.cindex.CursorKind.CALL_EXPR:
-                    node_rep = f"{node_rep}_{node.displayname}"
+                    node_rep = f"{node_rep}_func"
 
                 node_data["node_rep"] = node_rep
             else:
@@ -177,27 +207,67 @@ class ASTSerializer:
 
         return f"{node_rep}({','.join(children_rep)})" if children_rep else node_rep
 
+    def _is_standalone_statement(self, node):
+        """
+        Check if the node itself is a full statement.
+        This assumes we are starting the check from a suspected full statement node.
+        """
+
+        # Define node kinds that generally represent standalone statements
+        standalone_kinds = {
+            clang.cindex.CursorKind.COMPOUND_STMT, clang.cindex.CursorKind.IF_STMT,
+            clang.cindex.CursorKind.FOR_STMT, clang.cindex.CursorKind.WHILE_STMT,
+            clang.cindex.CursorKind.DO_STMT, clang.cindex.CursorKind.RETURN_STMT,
+            clang.cindex.CursorKind.DECL_STMT
+        }
+        return node.kind in standalone_kinds
+
+    def _is_standalone_parent(self, node):
+        """
+        Check if the node itself is a full statement.
+        This assumes we are starting the check from a suspected full statement node.
+        """
+        if node.kind == clang.cindex.CursorKind.TRANSLATION_UNIT:
+            return False
+        # Define node kinds that generally represent standalone statements
+        standalone_kinds = {
+            clang.cindex.CursorKind.COMPOUND_STMT, clang.cindex.CursorKind.IF_STMT,
+            clang.cindex.CursorKind.FOR_STMT, clang.cindex.CursorKind.WHILE_STMT,
+            clang.cindex.CursorKind.DO_STMT
+        }
+        return node.kind in standalone_kinds
+
 
     # Gets all subtrees with node parameter as root
     def _extract_subtrees(self, root):
+
         subtrees = []
-        stack = [root]
+        stack = [(root, True)]
+        root_subtrees = []
 
         while stack:
-            node = stack.pop()
+            node, is_top_level = stack.pop()
+            if node.location.file is not None:
+                file_path = Path(node.location.file.name)
+                if file_path.suffix == ".h": # headers are parsed many times at the moment, skip them until we are able to properly handle them
+                    continue
+                if not is_in_project_directory(file_path, self.project_root):
+                    print("not in dir")
+                    continue
 
             self.anon_map.clear()
             subtree = self._serialize_node(node)
-            subtrees.append({
-                "tree": subtree,
-                "root_node": get_node_text(node)
-            })
+            subtrees.append(subtree)
 
             children = self._get_node_children(node)
 
+            if is_top_level:
+                root_subtrees.append(hash_subtree(subtree))
+
+            is_stanalone_parent = self._is_standalone_parent(node)
             for child in children:
-                stack.append(child)
-        return subtrees
+                stack.append((child, is_stanalone_parent))
+        return subtrees, root_subtrees
 
 
 def _get_first_and_last_tokens(node):
@@ -253,8 +323,21 @@ def print_tree(node, depth=0):
 
 def parse_to_ast(file_path):
     index = clang.cindex.Index.create()
-    # If parsing C++, replace the following line with: tu = index.parse(file_path, args=['-std=c++14'])
-    tu = index.parse(file_path)
+    include_paths = CONFIG.get("include_paths", [])
+
+    # -includetypes.h - types.h should be in /usr/include/sys/types on Linux.
+    # On Windows, download and add path to config.json
+    args = [
+        "-std=c99",
+        "-fms-extensions",
+        "-fms-compatibility",
+        "-fdelayed-template-parsing",
+        "-DUSE_CURL_MULTI",
+        "-includetypes.h",
+        "-DDEFINES"
+    ] + [f"-I{path}" for path in include_paths]
+
+    tu = index.parse(str(file_path), args=args)
     return tu.cursor
 
 # Human readable column
@@ -370,3 +453,40 @@ def parse(input_path: str, output_dir: str):
                 'Deserialized Tree': deserialized_tree
             })
     print(f"Output written to {output_path}")
+
+
+
+def is_in_project_directory(file_path, project_root):
+    """
+    Check if the file path is within the project root directory using pathlib.
+    """
+    abs_file_path = Path(file_path).resolve()
+    abs_project_root = Path(project_root).resolve()
+    return abs_project_root in abs_file_path.parents or abs_file_path == abs_project_root
+
+# def print_node_details(node, depth=0):
+#     # Fetch the source location of the node
+#     location = node.location
+#     source_location = f"{location.file}:{location.line}:{location.column}" if location.file else "Unknown location"
+
+#     # Prepare the node details
+#     node_details = (
+#         f"{' ' * depth}Node Kind: {node.kind}, "
+#         f"Location: {source_location}\n"
+#     )
+#     node_details +=  print_node_spellings(node)
+#     node_details += "\n"
+
+#     with open("../output/test", 'a') as file:
+#         # Print the node details
+#         file.write(node_details)
+
+
+# def print_node_spellings(node, depth=0):
+#     # Print the spelling of the node
+#     text = ' ' * depth + node.spelling
+
+#     # Recurse for each child of the current node
+#     for child in node.get_children():
+#         text = text + print_node_spellings(child, depth + 2)
+#     return text

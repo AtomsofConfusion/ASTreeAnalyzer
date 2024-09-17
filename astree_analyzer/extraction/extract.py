@@ -39,7 +39,7 @@ def get_file_content_at_commit(repo, commit_hash, file_path):
     commit = repo.get(commit_hash)
     tree = commit.tree
     blob = tree[file_path].data
-    content = blob.decode("utf-8")
+    content = blob.decode("utf-8", errors='replace')
     content = remove_conditional_definitions(content)
     return content
 
@@ -83,6 +83,7 @@ def _init_translation_unit(file_path):
         "-fdelayed-template-parsing",
         "-DUSE_CURL_MULTI",
         "-includetypes.h",
+        "-DDEFINES"
     ] + [f"-I{path}" for path in include_paths]
 
     tu = index.parse(str(file_path), args=args)
@@ -185,7 +186,7 @@ def _save_file_to_temp(repo, output_dir, commit, file_path):
     full_code = get_file_content_at_commit(repo, commit, file_path)
     file_path = Path(output_dir, file_path)
     file_path.parent.mkdir(exist_ok=True, parents=True)
-    file_path.write_text(full_code)
+    file_path.write_text(full_code, encoding='utf-8')
     return full_code
 
 
@@ -255,8 +256,9 @@ def extract_removed_code(repo, commit):
     loaded_headers = defaultdict(list)
     invalid_headers = defaultdict(list)
     all_subtrees = []
-    serializer = ASTSerializer()
+    root_subtrees = {}
     with tempfile.TemporaryDirectory() as temp_dir:
+        serializer = ASTSerializer(project_root=temp_dir)
         for modified_file in commit.modified_files:
             if modified_file.new_path is None:
                 continue
@@ -265,6 +267,7 @@ def extract_removed_code(repo, commit):
             if file_path.suffix not in (".h", ".c"):
                 continue
             if modified_file.diff_parsed:
+                processed_nodes = []
                 try:
                     full_code = _save_file_to_temp(
                         repo,
@@ -304,7 +307,13 @@ def extract_removed_code(repo, commit):
                             if len(node_text) > 500:
                                 print(f"{file_path}, line {line_number} is porbably not being parsed correctly. Skipping")
                                 continue
-                            subtrees = serializer.exctract_subtrees_for_node(containing_node)
+                            node_hash = containing_node.hash
+                            if node_hash in processed_nodes:
+                                continue
+                            processed_nodes.append(node_hash)
+                            subtrees, node_root_subtrees = serializer.exctract_subtrees_for_node(containing_node)
+                            for subtree in node_root_subtrees:
+                                root_subtrees[subtree] = root_subtrees.get(subtree, 0) + 1
                             all_subtrees.extend(subtrees)
                             removed_line_data[line_number] = {"context": node_text, "code": code}
                     except TextInCommentError:
@@ -316,17 +325,19 @@ def extract_removed_code(repo, commit):
                         "removed": removed_line_data,
                     }
                 )
-    return removed_code, all_subtrees
+    return removed_code, all_subtrees, root_subtrees
 
 
-def extract_commented_code(repo, project_dir, commit, serializer, num_of_files=None):
+def extract_commented_code(repo, project_dir, commit, num_of_files=None):
     loaded_headers = defaultdict(list)
     invalid_headers = defaultdict(list)
     project_dir = Path(project_dir)
     comments_line_data = {}
     all_subtrees = []
+    root_subtrees = {}
     count = 0
     with tempfile.TemporaryDirectory() as temp_dir:
+        serializer = ASTSerializer(project_root=temp_dir)
         for file_path in project_dir.rglob("*.[ch]"):
             if num_of_files is not None and count == num_of_files:
                 break
@@ -353,13 +364,17 @@ def extract_commented_code(repo, project_dir, commit, serializer, num_of_files=N
             try:
                 comments = find_code_next_to_comments(file_path, serializer=serializer)
             except Exception as e:
-                print(f"An error occurred while finding comment sof {file_path}. Skipping")
+                print(f"An error occurred while finding comment of {file_path}. Skipping")
                 continue
             for comment_data in comments:
-                all_subtrees.extend(comment_data.pop("subtrees"))
+                subtrees = comment_data.pop("subtrees")
+                node_root_subtrees = comment_data.pop("root_subtrees")
+                for subtree in node_root_subtrees:
+                    root_subtrees[subtree] = root_subtrees.get(subtree, 0) + 1
+                all_subtrees.extend(subtrees)
                 comments_line_data.setdefault(str(relative_path), []).append(comment_data)
 
-    return comments_line_data, all_subtrees
+    return comments_line_data, all_subtrees, root_subtrees
 
 def dump_bugfix_data(project_dir, output_file, num_of_commits=None):
 
@@ -368,6 +383,7 @@ def dump_bugfix_data(project_dir, output_file, num_of_commits=None):
 
     # Mining the local repository
     all_subtrees = []
+    all_root_subtrees = {}
 
     count = 0
     for commit in Repository(project_dir).traverse_commits():
@@ -376,14 +392,16 @@ def dump_bugfix_data(project_dir, output_file, num_of_commits=None):
         if is_fix_commit(commit):
             count += 1
             print(commit.hash)
-            removed_code, subtrees = extract_removed_code(repo, commit)
+            removed_code, subtrees, root_subtrees = extract_removed_code(repo, commit)
             all_subtrees.extend(subtrees)
             if removed_code:
                 fix_commits_data[commit.hash] = removed_code
+            for root_subtree, tree_count in root_subtrees.items():
+                all_root_subtrees[root_subtree] = all_root_subtrees.get(root_subtree, 0) + tree_count
     Path(output_file).write_text(json.dumps(fix_commits_data, indent=4))
     output_path = Path(output_file)
     subtrees_path = _get_subtrees_output_path(output_path)
-    write_subtrees_to_file(subtrees_path, all_subtrees, output_format="json")
+    write_subtrees_to_file(subtrees_path, all_subtrees, all_root_subtrees, output_format="json")
 
 
 def find_code_next_to_comments(file_path, serializer):
@@ -452,11 +470,12 @@ def find_code_next_to_comments(file_path, serializer):
         if len(node_text) > 500:
             print(f"{file_path}, line {line} is porbably not being parsed correctly. Skipping")
             continue
-        subtrees = serializer.exctract_subtrees_for_node(node_part)
+        subtrees, root_subrees = serializer.exctract_subtrees_for_node(node_part)
         relevant_code_snippets.append({
             "line": line,
             "node": node_text,
             "subtrees": subtrees,
+            "root_subtrees": root_subrees
         })
     return relevant_code_snippets
 
@@ -482,16 +501,15 @@ def dump_comments_data(project_dir, output_file, commit, num_of_files=None):
         head_commit = repo.head.peel(pygit2.GIT_OBJECT_COMMIT)
         commit = head_commit.id
 
-    serializer = ASTSerializer()
     output_path = Path(output_file)
-    comments_data, subtrees = extract_commented_code(repo, project_dir, commit, serializer, num_of_files)
+    comments_data, subtrees, root_subrees = extract_commented_code(repo, project_dir, commit, num_of_files)
     output_path.write_text(json.dumps(
         {
             str(commit): comments_data
         }, indent=4))
 
     subtrees_path = _get_subtrees_output_path(output_path)
-    write_subtrees_to_file(subtrees_path, subtrees, output_format="json")
+    write_subtrees_to_file(subtrees_path, subtrees, root_subrees, output_format="json")
 
 
 def _get_subtrees_output_path(output_path: Path):
